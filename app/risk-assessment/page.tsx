@@ -4,7 +4,7 @@ import Papa from "papaparse";
 import { useState, useEffect } from "react";
 import { useRiskData } from "@/store/useRiskData";
 import Search from '@/app/ui/search';
-import RiskFormModal from '@/app/ui/RiskFormModal'; // ✅ ADDED for CRUD modal
+import RiskFormModal from '@/app/ui/RiskFormModal';
 
 export default function RiskAssessmentPage() {
   const { setData, data: storeData } = useRiskData();
@@ -12,7 +12,6 @@ export default function RiskAssessmentPage() {
   const [headers, setHeaders] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
 
-  // ✅ CRUD states
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingRisk, setEditingRisk] = useState<any | null>(null);
@@ -21,10 +20,7 @@ export default function RiskAssessmentPage() {
   const ITEMS_PER_PAGE = 50;
 
   const filteredData = localData.filter((row) =>
-    Object.values(row)
-      .join(" ")
-      .toLowerCase()
-      .includes(searchQuery.toLowerCase())
+    Object.values(row).join(" ").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const paginatedData = filteredData.slice(
@@ -65,27 +61,28 @@ export default function RiskAssessmentPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Risk Assessment</h1>
-        <div className="flex gap-4">
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="bg-black text-white px-4 py-2 rounded hover:scale-105"
-          >
-            + Create Risk
-          </button>
-          <label className="inline-block bg-black text-white px-6 py-3 rounded-lg cursor-pointer shadow hover:scale-105 transition w-fit">
-            <input type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
-            Upload CSV File
-          </label>
-        </div>
-      </div>
+      <h1 className="text-3xl font-bold">Risk Assessment</h1>
 
-      {localData.length > 0 && (
-        <div className="w-full max-w-md">
+      {/* ✅ Left-aligned: Search + Create + Upload */}
+      <div className="flex flex-wrap items-center gap-4">
+        {/* Search */}
+        <div className="min-w-[200px] max-w-md">
           <Search value={searchQuery} onChange={setSearchQuery} />
         </div>
-      )}
+
+        {/* Buttons */}
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="bg-black text-white px-4 py-2 rounded hover:scale-105 transition"
+        >
+          + Create Risk
+        </button>
+
+        <label className="inline-block bg-black text-white px-6 py-2 rounded-lg cursor-pointer shadow hover:scale-105 transition w-fit">
+          <input type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
+          Upload CSV File
+        </label>
+      </div>
 
       {filteredData.length > 0 && (
         <div className="flex flex-col gap-8">
@@ -99,7 +96,7 @@ export default function RiskAssessmentPage() {
                         {header}
                       </th>
                     ))}
-                    <th className="p-3 border font-semibold border-gray-300 whitespace-nowrap">Actions</th> {/* ✅ ADDED */}
+                    <th className="p-3 border font-semibold border-gray-300 whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -200,4 +197,4 @@ export default function RiskAssessmentPage() {
       )}
     </div>
   );
-}  
+}
