@@ -6,21 +6,48 @@ import { useRiskData } from "@/store/useRiskData";
 import Search from '@/app/ui/search';
 import RiskFormModal from '@/app/ui/RiskFormModal';
 
+const REQUIRED_HEADERS = [
+  "Sr#", "Business Process", "Date Risk Identified", "Risk Description", "Threats", "Vulnerabilities", "Existing Controls", "Risk Owner", "Controls / Clause No",
+  "ISO 27001: 2022 Controls Reference", "Confidentiality", "Integrity", "Availability", "Max CIA Value", "Vulnerability Rating", "Threat Frequency",
+  "Threat Impact", "Threat Value", "Risk Value", "Planned Mitigation Completion Date", "Risk Treatment Action", "Revised Vulnerability Rating",
+  "Revised Threat Frequency", "Revised Threat Impact", "Revised Threat Value", "Revised Risk Value", "Actual Mitigation Completion Date", "Risk Treatment Option"
+];
+
+function fuzzyMatch(required, actualHeaders) {
+  const reqWords = required.replace(/[^a-zA-Z0-9 ]/g, '').toLowerCase().split(' ').filter(Boolean);
+  for (const actual of actualHeaders) {
+    const actualNorm = actual.replace(/[^a-zA-Z0-9 ]/g, '').toLowerCase();
+    if (reqWords.every(word => actualNorm.includes(word))) {
+      return actual;
+    }
+  }
+  return null;
+}
+
+// Add a helper function to compare two rows ignoring 'Sr#'
+function isDuplicateRow(rowA: any, rowB: any) {
+  const keysA = Object.keys(rowA).filter(k => k !== 'Sr#');
+  const keysB = Object.keys(rowB).filter(k => k !== 'Sr#');
+  if (keysA.length !== keysB.length) return false;
+  return keysA.every(key => rowA[key] === rowB[key]);
+}
+
 export default function RiskAssessmentPage() {
   const { setData, data: storeData } = useRiskData();
-  const [localData, setLocalData] = useState<any[]>([]);
-  const [headers, setHeaders] = useState<string[]>([]);
+  const [localData, setLocalData] = useState([]);
+  const [headers, setHeaders] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [uploadMode, setUploadMode] = useState<'replace' | 'append'>('replace');
-
+  const [uploadMode, setUploadMode] = useState('replace');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [editingRisk, setEditingRisk] = useState<any | null>(null);
-
+  const [editingRisk, setEditingRisk] = useState(null);
+  const [uploadError, setUploadError] = useState(null);
+  const [duplicateRows, setDuplicateRows] = useState([]);
+  const [duplicateInfo, setDuplicateInfo] = useState<{duplicates: number, added: number} | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 50;
 
-  const filteredData = localData.filter((row) =>
+  const filteredData = localData.filter(row =>
     Object.values(row).join(" ").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -38,17 +65,16 @@ export default function RiskAssessmentPage() {
   useEffect(() => {
     if (storeData.length > 0 && localData.length === 0) {
       setLocalData(storeData);
-      const keys = Object.keys(storeData[0] || {});
-      setHeaders(keys);
+      setHeaders(Object.keys(storeData[0] || {}));
     }
   }, [storeData]);
 
   const getNextSrNumber = () => {
-    const srValues = localData.map((item) => parseInt(item["Sr#"]) || 0);
+    const srValues = localData.map(item => parseInt(item["Sr#"]) || 0);
     return srValues.length ? Math.max(...srValues) + 1 : 1;
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -56,7 +82,16 @@ export default function RiskAssessmentPage() {
       header: true,
       skipEmptyLines: true,
       complete: (results) => {
-        let parsed = results.data as any[];
+        let parsed = results.data;
+        const keys = Object.keys(parsed[0] || {});
+
+        const missing = REQUIRED_HEADERS.filter(req => !fuzzyMatch(req, keys));
+        if (missing.length > 0) {
+          setUploadError(`Cannot upload file. Missing columns: [${missing.map(m => `"${m}"`).join(", ")}]`);
+          return;
+        }
+
+        setUploadError(null);
 
         if (!parsed[0]?.["Sr#"]) {
           parsed = parsed.map((row, idx) => ({
@@ -71,13 +106,45 @@ export default function RiskAssessmentPage() {
           }));
         }
 
-        const updatedData = uploadMode === 'append' ? [...localData, ...parsed] : parsed;
+        if (uploadMode === 'append') {
+          const existingRows = localData;
+          const newRows = [];
+          const duplicates = [];
 
-        setHeaders(Object.keys(updatedData[0] || {}));
-        setLocalData(updatedData);
-        setData(updatedData);
+          parsed.forEach(row => {
+            const isDuplicate = existingRows.some(existing => isDuplicateRow(existing, row));
+            if (isDuplicate) {
+              duplicates.push(row);
+            } else {
+              newRows.push(row);
+            }
+          });
+
+          if (duplicates.length > 0) {
+            setDuplicateRows(duplicates);
+            setDuplicateInfo({duplicates: duplicates.length, added: newRows.length});
+          } else {
+            setDuplicateRows([]);
+            setDuplicateInfo(null);
+          }
+
+          // Assign new Sr# to only the new rows
+          const offset = getNextSrNumber();
+          const newRowsWithSr = newRows.map((row, idx) => ({ ...row, ["Sr#"]: (offset + idx).toString() }));
+          const updatedData = [...existingRows, ...newRowsWithSr];
+          setHeaders(Object.keys(updatedData[0] || {}));
+          setLocalData(updatedData);
+          setData(updatedData);
+        } else {
+          setDuplicateRows([]);
+          setDuplicateInfo(null);
+          setHeaders(Object.keys(parsed[0] || {}));
+          setLocalData(parsed);
+          setData(parsed);
+        }
+
         setCurrentPage(1);
-      },
+      }
     });
   };
 
@@ -100,15 +167,6 @@ export default function RiskAssessmentPage() {
     document.body.removeChild(link);
   };
 
-  const exportToXLSX = async () => {
-    if (filteredData.length === 0) return;
-    const XLSX = await import('xlsx');
-    const ws = XLSX.utils.json_to_sheet(filteredData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Risk Assessment");
-    XLSX.writeFile(wb, "risk_assessment.xlsx");
-  };
-
   return (
     <div className="space-y-8 fade-in">
       <div className="flex items-center justify-between">
@@ -122,17 +180,13 @@ export default function RiskAssessmentPage() {
         </div>
       </div>
 
-      {/* ✅ Responsive layout for Search + Buttons */}
       <div className="flex flex-wrap justify-between items-start gap-4 p-6 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
         <div className="flex-1 min-w-[250px] max-w-xl">
           <Search value={searchQuery} onChange={setSearchQuery} />
         </div>
 
         <div className="flex flex-wrap gap-3 items-center">
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="btn-primary whitespace-nowrap"
-          >
+          <button onClick={() => setShowCreateModal(true)} className="btn-primary whitespace-nowrap">
             + Create Risk
           </button>
 
@@ -140,23 +194,11 @@ export default function RiskAssessmentPage() {
             <div className="flex gap-2 items-center text-sm">
               <span>Upload Mode:</span>
               <label className="inline-flex items-center gap-1">
-                <input
-                  type="radio"
-                  name="uploadMode"
-                  value="replace"
-                  checked={uploadMode === 'replace'}
-                  onChange={() => setUploadMode('replace')}
-                />
+                <input type="radio" name="uploadMode" value="replace" checked={uploadMode === 'replace'} onChange={() => setUploadMode('replace')} />
                 Replace
               </label>
               <label className="inline-flex items-center gap-1">
-                <input
-                  type="radio"
-                  name="uploadMode"
-                  value="append"
-                  checked={uploadMode === 'append'}
-                  onChange={() => setUploadMode('append')}
-                />
+                <input type="radio" name="uploadMode" value="append" checked={uploadMode === 'append'} onChange={() => setUploadMode('append')} />
                 Append
               </label>
             </div>
@@ -167,28 +209,12 @@ export default function RiskAssessmentPage() {
             📁 Upload CSV
           </label>
 
-          <button
-            onClick={handleDeleteCSV}
-            className="btn-danger whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={localData.length === 0}
-          >
+          <button onClick={handleDeleteCSV} className="btn-danger whitespace-nowrap" disabled={localData.length === 0}>
             🗑️ Delete CSV
           </button>
 
-          <button
-            onClick={exportToCSV}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={filteredData.length === 0}
-          >
+          <button onClick={exportToCSV} className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded whitespace-nowrap" disabled={filteredData.length === 0}>
             Export CSV
-          </button>
-
-          <button
-            onClick={exportToXLSX}
-            className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={filteredData.length === 0}
-          >
-            Export XLSX
           </button>
         </div>
       </div>
@@ -213,26 +239,16 @@ export default function RiskAssessmentPage() {
                     ))}
                     <td className="px-6 py-4">
                       <div className="flex gap-2">
-                        <button
-                          className="text-blue-600 hover:underline"
-                          onClick={() => {
-                            setEditingRisk(row);
-                            setShowEditModal(true);
-                          }}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="text-red-600 hover:underline"
-                          onClick={() => {
-                            const index = (currentPage - 1) * ITEMS_PER_PAGE + rowIdx;
-                            const updated = localData.filter((_, i) => i !== index);
-                            setLocalData(updated);
-                            setData(updated);
-                          }}
-                        >
-                          Delete
-                        </button>
+                        <button className="text-blue-600 hover:underline" onClick={() => {
+                          setEditingRisk(row);
+                          setShowEditModal(true);
+                        }}>Edit</button>
+                        <button className="text-red-600 hover:underline" onClick={() => {
+                          const index = (currentPage - 1) * ITEMS_PER_PAGE + rowIdx;
+                          const updated = localData.filter((_, i) => i !== index);
+                          setLocalData(updated);
+                          setData(updated);
+                        }}>Delete</button>
                       </div>
                     </td>
                   </tr>
@@ -242,31 +258,11 @@ export default function RiskAssessmentPage() {
           </div>
 
           <div className="flex justify-center gap-2 p-4">
-            <button
-              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-              disabled={currentPage === 1}
-              className="px-3 py-1 border rounded disabled:opacity-50"
-            >
-              Previous
-            </button>
-
+            <button onClick={() => setCurrentPage(p => Math.max(p - 1, 1))} disabled={currentPage === 1} className="px-3 py-1 border rounded disabled:opacity-50">Previous</button>
             {Array.from({ length: totalPages }, (_, i) => (
-              <button
-                key={i}
-                onClick={() => setCurrentPage(i + 1)}
-                className={`px-3 py-1 border rounded ${currentPage === i + 1 ? "bg-black text-white" : ""}`}
-              >
-                {i + 1}
-              </button>
+              <button key={i} onClick={() => setCurrentPage(i + 1)} className={`px-3 py-1 border rounded ${currentPage === i + 1 ? "bg-black text-white" : ""}`}>{i + 1}</button>
             ))}
-
-            <button
-              onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-              disabled={currentPage === totalPages}
-              className="px-3 py-1 border rounded disabled:opacity-50"
-            >
-              Next
-            </button>
+            <button onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))} disabled={currentPage === totalPages} className="px-3 py-1 border rounded disabled:opacity-50">Next</button>
           </div>
         </div>
       )}
@@ -276,12 +272,7 @@ export default function RiskAssessmentPage() {
           <div className="text-6xl mb-4">📊</div>
           <h3 className="text-xl font-semibold mb-2">No Data Available</h3>
           <p className="text-slate-500">Upload a CSV file or create your first risk assessment to get started.</p>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="btn-primary mt-4"
-          >
-            Create Your First Risk
-          </button>
+          <button onClick={() => setShowCreateModal(true)} className="btn-primary mt-4">Create Your First Risk</button>
         </div>
       )}
 
@@ -294,32 +285,43 @@ export default function RiskAssessmentPage() {
       )}
 
       {showCreateModal && (
-        <RiskFormModal
-          onClose={() => setShowCreateModal(false)}
-          onSave={(newRisk) => {
-            const srNumber = getNextSrNumber();
-            const updated = [...localData, { ...newRisk, ["Sr#"]: srNumber.toString() }];
-            setLocalData(updated);
-            setData(updated);
-          }}
-        />
+        <RiskFormModal onClose={() => setShowCreateModal(false)} onSave={(newRisk) => {
+          const srNumber = getNextSrNumber();
+          const updated = [...localData, { ...newRisk, ["Sr#"]: srNumber.toString() }];
+          setLocalData(updated);
+          setData(updated);
+        }} />
       )}
 
       {showEditModal && editingRisk && (
-        <RiskFormModal
-          initialData={editingRisk}
-          onClose={() => {
-            setEditingRisk(null);
-            setShowEditModal(false);
-          }}
-          onSave={(updatedRisk) => {
-            const index = localData.findIndex((r) => r["Sr#"] === editingRisk["Sr#"]);
-            const updated = [...localData];
-            updated[index] = updatedRisk;
-            setLocalData(updated);
-            setData(updated);
-          }}
-        />
+        <RiskFormModal initialData={editingRisk} onClose={() => {
+          setEditingRisk(null);
+          setShowEditModal(false);
+        }} onSave={(updatedRisk) => {
+          const index = localData.findIndex((r) => r["Sr#"] === editingRisk["Sr#"]);
+          const updated = [...localData];
+          updated[index] = updatedRisk;
+          setLocalData(updated);
+          setData(updated);
+        }} />
+      )}
+
+      {uploadError && (
+        <div className="fixed inset-0 flex items-center justify-center z-50">
+          <div className="bg-red-50 border border-red-400 text-red-700 px-8 py-6 rounded shadow-lg text-lg font-semibold max-w-xl w-full text-center">
+            {uploadError}
+            <button className="block mx-auto mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700" onClick={() => setUploadError(null)}>Close</button>
+          </div>
+        </div>
+      )}
+
+      {duplicateRows.length > 0 && duplicateInfo && (
+        <div className="fixed inset-0 flex items-center justify-center z-50">
+          <div className="bg-yellow-50 border border-yellow-500 text-yellow-800 px-8 py-6 rounded shadow-lg text-lg font-semibold max-w-xl w-full text-center">
+            <p>{duplicateInfo.duplicates} duplicate row(s) were found and skipped during upload.<br/>{duplicateInfo.added} new row(s) were added.</p>
+            <button className="block mx-auto mt-4 px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600" onClick={() => { setDuplicateRows([]); setDuplicateInfo(null); }}>Close</button>
+          </div>
+        </div>
       )}
     </div>
   );
