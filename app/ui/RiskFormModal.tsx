@@ -286,7 +286,7 @@ export default function RiskFormModal({
                   />
                 ) : (
                   <input
-                    type={typeof formData[col] === "number" ? "number" : "text"}
+                    type="text"
                     className="form-input"
                     value={formData[col] || ""}
                     onChange={(e) => handleChange(col, e.target.value)}

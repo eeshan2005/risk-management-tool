@@ -17,7 +17,8 @@ export default function Search({ value, onChange }: SearchProps) {
       <input
         type="text"
         placeholder="Search risks..."
-        className="form-input pl-10 pr-4"
+        className="form-input pl-12 pr-4"
+        style={{ paddingLeft: '2.5rem' }}
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />

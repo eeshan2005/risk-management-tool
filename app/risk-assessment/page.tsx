@@ -1,7 +1,7 @@
 "use client";
 
 import Papa from "papaparse";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRiskData } from "@/store/useRiskData";
 import Search from '@/app/ui/search';
 import RiskFormModal from '@/app/ui/RiskFormModal';
@@ -46,6 +46,7 @@ export default function RiskAssessmentPage() {
   const [duplicateInfo, setDuplicateInfo] = useState<{duplicates: number, added: number} | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 50;
+  const fileInputRef = useRef(null);
 
   const filteredData = localData.filter(row =>
     Object.values(row).join(" ").toLowerCase().includes(searchQuery.toLowerCase())
@@ -144,6 +145,8 @@ export default function RiskAssessmentPage() {
         }
 
         setCurrentPage(1);
+        // Reset file input so the same file can be uploaded again
+        if (fileInputRef.current) fileInputRef.current.value = "";
       }
     });
   };
@@ -205,7 +208,7 @@ export default function RiskAssessmentPage() {
           )}
 
           <label className="btn-secondary cursor-pointer whitespace-nowrap">
-            <input type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
+            <input ref={fileInputRef} type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
             📁 Upload CSV
           </label>
 
@@ -233,7 +236,10 @@ export default function RiskAssessmentPage() {
               </thead>
               <tbody>
                 {paginatedData.map((row, rowIdx) => (
-                  <tr key={rowIdx} className="hover:bg-gray-50 dark:hover:bg-slate-600">
+                  <tr
+                    key={rowIdx}
+                    className="bg-white even:bg-gray-50 text-slate-800 hover:bg-gray-200 dark:bg-slate-800 dark:even:bg-slate-700 dark:text-white dark:hover:bg-slate-600"
+                  >
                     {headers.map((header, colIdx) => (
                       <td key={colIdx} className="px-6 py-4">{row[header] || "-"}</td>
                     ))}
@@ -258,11 +264,33 @@ export default function RiskAssessmentPage() {
           </div>
 
           <div className="flex justify-center gap-2 p-4">
-            <button onClick={() => setCurrentPage(p => Math.max(p - 1, 1))} disabled={currentPage === 1} className="px-3 py-1 border rounded disabled:opacity-50">Previous</button>
+            <button
+              onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1 border rounded mx-1 bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-800 dark:text-white dark:border-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
             {Array.from({ length: totalPages }, (_, i) => (
-              <button key={i} onClick={() => setCurrentPage(i + 1)} className={`px-3 py-1 border rounded ${currentPage === i + 1 ? "bg-black text-white" : ""}`}>{i + 1}</button>
+              <button
+                key={i}
+                onClick={() => setCurrentPage(i + 1)}
+                className={`px-3 py-1 border rounded mx-1
+                  ${currentPage === i + 1
+                    ? 'bg-blue-600 text-white dark:bg-blue-400'
+                    : 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-800 dark:text-white dark:border-blue-700'}
+                `}
+              >
+                {i + 1}
+              </button>
             ))}
-            <button onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))} disabled={currentPage === totalPages} className="px-3 py-1 border rounded disabled:opacity-50">Next</button>
+            <button
+              onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1 border rounded mx-1 bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-800 dark:text-white dark:border-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
           </div>
         </div>
       )}
