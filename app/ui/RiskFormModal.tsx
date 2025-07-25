@@ -8,7 +8,7 @@ interface RiskFormModalProps {
   onClose: () => void;
   onSave: (data: any) => void;
   initialData?: any;
-  selectedCompanyId?: string | null;
+  selectedDepartmentId?: string | null;
 }
 
 const DROPDOWN_OPTIONS: Record<string, string[]> = {
@@ -101,7 +101,7 @@ export default function RiskFormModal({
   onClose,
   onSave,
   initialData = {},
-  selectedCompanyId = null,
+  selectedDepartmentId = null,
 }: RiskFormModalProps) {
   const { data } = useRiskData();
   const [formData, setFormData] = useState<Record<string, any>>({});
@@ -110,7 +110,7 @@ export default function RiskFormModal({
 
   useEffect(() => {
     if (data.length > 0 && Object.keys(formData).length === 0) {
-      const exclude = ["Max CIA Value", "Threat Value", "Risk Value", "Sr#", "id", "company_id", "Id", "Company_id", "ID", "COMPANY_ID"];
+      const exclude = ["Max CIA Value", "Threat Value", "Risk Value", "Sr#", "id", "department_id", "Id", "Department_id", "ID", "DEPARTMENT_ID"];
       const allCols = Object.keys(data[0]).filter((col) => !exclude.includes(col));
       setColumns(allCols);
 

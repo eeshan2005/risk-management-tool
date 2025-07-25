@@ -32,10 +32,10 @@ export default function QueryBuilderPage() {
 
   const isReviewer = profile?.role === 'reviewer';
   const isAssessor = profile?.role === 'assessor';
-  const isAdmin = profile?.role === 'admin';
+  const isAdmin = profile?.role === 'super_admin';
 
-  // Only show data for the reviewer's company
-  // (Assume useRiskData is already filtered by company for reviewer/assessor)
+  // Only show data for the reviewer's department
+  // (Assume useRiskData is already filtered by department for reviewer/assessor)
   const columnHeaders = riskData.length > 0 ? Object.keys(riskData[0]) : [];
 
   const operators = {

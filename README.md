@@ -45,8 +45,8 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 create table profiles (
   id uuid primary key references auth.users(id),
   email text,
-  role text check (role in ('admin', 'assessor', 'reviewer')) default 'reviewer',
-  company_id uuid references companies(id),
+  role text check (role in ('super_admin', 'department_head', 'assessor', 'reviewer')) default 'reviewer',
+  department_id uuid references departments(id),
   created_at timestamp default now()
 );
 ```
@@ -64,13 +64,13 @@ create policy "Allow user to view own profile" on profiles
   for select using (auth.uid() = id);
 ```
 
-#### Reviewer/Assessor: Only see rows for their company in other tables (example for risks)
+#### Reviewer/Assessor: Only see rows for their department in other tables (example for risks)
 ```sql
-create policy "Company-based access for risks" on risks
+create policy "Department-based access for risks" on risks
   for select using (
     exists (
       select 1 from profiles p
-      where p.id = auth.uid() and p.company_id = company_id
+      where p.id = auth.uid() and p.department_id = department_id
     )
     or (
       exists (
@@ -92,20 +92,20 @@ Manually insert an admin user in Supabase SQL editor:
 ```sql
 -- First, create the user in the auth.users table via Supabase Auth UI or API
 -- Then, insert into profiles:
-insert into profiles (id, email, role) values ('<admin-user-uuid>', 'admin@assuregate.com', 'admin');
+insert into profiles (id, email, role) values ('<admin-user-uuid>', 'admin@assuregate.com', 'super_admin');
 ```
 
 ---
 
 ### 4. Reviewer Self-Signup
-Reviewers can sign up and select a company. Their role defaults to 'reviewer'.
+Reviewers can sign up and select a department. Their role defaults to 'reviewer'.
 
 ### 5. Assessor Creation
 Only admins can create assessors via the admin dashboard.
 
 ---
 
-### 6. Company Table
+### 6. Department Table
 Make sure your `companies` table exists with at least `id` and `name` columns.
 
 ---

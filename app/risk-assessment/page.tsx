@@ -56,8 +56,8 @@ export default function RiskAssessmentPage() {
   const ITEMS_PER_PAGE = 50;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
-  const [companyName, setCompanyName] = useState<string>("");
+  const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null);
+  const [departmentName, setDepartmentName] = useState<string>("");
   const [originalData, setOriginalData] = useState<Record<string, any>[]>([]);
   const { user, profile, loading } = useAuth();
 
@@ -68,53 +68,66 @@ export default function RiskAssessmentPage() {
     }
   }, [user, profile, loading, router]);
 
-  // Fetch risks for the user's company (assessor/reviewer) or all (admin)
+  // Fetch risks based on user role and department
   useEffect(() => {
-    const fetchCompanyData = async () => {
+    const fetchRiskData = async () => {
       if (!profile) return;
-      let companyId = null;
-      let canEdit = false;
-      let canView = false;
-      let companyName = "";
-      if (profile.role === "admin") {
-        // Admin: can see all companies, use selectedCompany from URL if present
+
+      let currentDepartmentId = null;
+      let currentDepartmentName = "";
+
+      if (profile.role === "super_admin") {
+        // Super Admin: can view all risks, or filter by department from URL
         const params = new URLSearchParams(window.location.search);
-        companyId = params.get('company');
-        if (companyId) {
-          const { data: companyData } = await supabase
-            .from('companies')
+        currentDepartmentId = params.get('department');
+        if (currentDepartmentId) {
+          const { data: departmentData } = await supabase
+            .from('departments')
             .select('name')
-            .eq('id', companyId)
+            .eq('id', currentDepartmentId)
             .single();
-          if (companyData) companyName = companyData.name;
+          if (departmentData) currentDepartmentName = departmentData.name;
         }
-      } else {
-        // Assessor/Reviewer: only their assigned company
-        companyId = profile.company_id;
-        if (companyId) {
-          const { data: companyData } = await supabase
-            .from('companies')
+      } else if (profile.role === "department_head" || profile.role === "assessor" || profile.role === "reviewer") {
+        // Department Head, Assessor, Reviewer: only their assigned department
+        currentDepartmentId = profile.department_id;
+        if (currentDepartmentId) {
+          const { data: departmentData } = await supabase
+            .from('departments')
             .select('name')
-            .eq('id', companyId)
+            .eq('id', currentDepartmentId)
             .single();
-          if (companyData) companyName = companyData.name;
+          if (departmentData) currentDepartmentName = departmentData.name;
         }
       }
-      setSelectedCompany(companyId);
-      setCompanyName(companyName);
-      if (!companyId) {
+
+      setSelectedDepartment(currentDepartmentId);
+      setDepartmentName(currentDepartmentName);
+
+      let query = supabase.from('risks').select('*').order('sr_no');
+
+      if (currentDepartmentId) {
+        query = query.eq('department_id', currentDepartmentId);
+      } else if (profile.role !== "super_admin") {
+        // If not super_admin and no department_id, clear data
         setLocalData([]);
         setData([]);
         setHeaders(REQUIRED_HEADERS);
         setOriginalData([]);
         return;
       }
-      // Fetch risks for this company
-      const { data: riskData } = await supabase
-        .from('risks')
-        .select('*')
-        .eq('company_id', companyId)
-        .order('sr_no');
+
+      const { data: riskData, error } = await query;
+
+      if (error) {
+        console.error("Error fetching risks:", error);
+        setLocalData([]);
+        setData([]);
+        setHeaders(REQUIRED_HEADERS);
+        setOriginalData([]);
+        return;
+      }
+
       if (riskData && riskData.length > 0) {
         const mappedData = riskData.map(item => mapDbColumnsToCsvData(item));
         setLocalData(mappedData);
@@ -128,11 +141,12 @@ export default function RiskAssessmentPage() {
         setOriginalData([]);
       }
     };
-    if (!loading && profile) fetchCompanyData();
+    if (!loading && profile) fetchRiskData();
     // eslint-disable-next-line
   }, [profile, loading, typeof window !== 'undefined' ? window.location.search : '']);
 
-  const isAdmin = profile?.role === "admin";
+  const isSuperAdmin = profile?.role === "super_admin";
+  const isDepartmentHead = profile?.role === "department_head";
   const isAssessor = profile?.role === "assessor";
   const isReviewer = profile?.role === "reviewer";
 
@@ -144,7 +158,7 @@ export default function RiskAssessmentPage() {
 
   // Filter headers to exclude ID fields and created_at
   const displayHeaders = headers.filter(header => 
-    !['id', 'company_id', 'Id', 'Company_id', 'ID', 'COMPANY_ID', 'created_at', 'Created_at', 'CREATED_AT'].includes(header)
+    !['id', 'department_id', 'Id', 'Department_id', 'ID', 'DEPARTMENT_ID', 'created_at', 'Created_at', 'CREATED_AT'].includes(header)
   );
 
   const paginatedData = filteredData.slice(
@@ -173,6 +187,15 @@ export default function RiskAssessmentPage() {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Only Super Admin and Department Head can upload files
+    if (!isSuperAdmin && !isDepartmentHead) {
+      setUploadError("You do not have permission to upload files.");
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      return;
+    }
   
     const fileName = file.name.toLowerCase();
     const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
@@ -305,9 +328,9 @@ export default function RiskAssessmentPage() {
     document.body.removeChild(link);
   };
 
-  const handleSmartSave = async (selectedCompanyId: string, currentData = localData) => {
-    if (!selectedCompanyId) {
-      console.error('Please select a company');
+  const handleSmartSave = async (selectedDepartmentId: string, currentData = localData) => {
+    if (!selectedDepartmentId) {
+      console.error('Please select a department');
       return;
     }
   
@@ -332,7 +355,7 @@ export default function RiskAssessmentPage() {
         } else {
           // Check if risk was updated (exclude Sr# and id fields from comparison)
           const isUpdated = Object.keys(currentRisk).some(key => {
-            if (['Sr#', 'sr_no', 'id', 'Id', 'ID', 'company_id', 'created_at'].includes(key)) {
+            if (['Sr#', 'sr_no', 'id', 'Id', 'ID', 'department_id', 'created_at'].includes(key)) {
               return false;
             }
             return currentRisk[key] !== originalRisk[key];
@@ -378,19 +401,19 @@ export default function RiskAssessmentPage() {
       // 2. Insert new risks
       if (newRisks.length > 0) {
         const sanitizedNewRisks = sanitizeDataForSupabase(newRisks);
-        const newRisksWithCompany = sanitizedNewRisks.map(risk => {
+        const newRisksWithDepartment = sanitizedNewRisks.map(risk => {
           // Preserve the Sr# value by converting it to sr_no
           const srNo = risk.sr_no || parseInt(risk.Sr || risk["Sr#"] || "0");
           return {
             ...risk,
             sr_no: srNo,
-            company_id: selectedCompanyId
+            department_id: selectedDepartmentId
           };
         });
   
         const { error } = await supabase
           .from('risks')
-          .insert(newRisksWithCompany);
+          .insert(newRisksWithDepartment);
         if (error) throw error;
       }
   
@@ -399,14 +422,14 @@ export default function RiskAssessmentPage() {
         const riskId = original.id || original.Id || original.ID;
         if (riskId) {
           const sanitizedRisk = sanitizeDataForSupabase([current])[0];
-          const riskWithCompany = {
+          const riskWithDepartment = {
             ...sanitizedRisk,
-            company_id: selectedCompanyId
+            department_id: selectedDepartmentId
           };
   
           const { error } = await supabase
             .from('risks')
-            .update(riskWithCompany)
+            .update(riskWithDepartment)
             .eq('id', riskId);
           if (error) throw error;
         }
@@ -416,7 +439,7 @@ export default function RiskAssessmentPage() {
       const { data: allRisks, error: fetchError } = await supabase
         .from('risks')
         .select('*')
-        .eq('company_id', selectedCompanyId)
+        .eq('department_id', selectedDepartmentId)
         .order('sr_no'); // Order by sr_no instead of created_at
   
       if (fetchError) throw fetchError;
@@ -447,14 +470,14 @@ export default function RiskAssessmentPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-4xl font-bold text-slate-900 mb-2">Risk Assessment</h1>
-          {selectedCompany && companyName ? (
+          {selectedDepartment && departmentName ? (
             <div className="flex items-center">
-              <p className="text-slate-600">Viewing risks for company: </p>
-              <span className="ml-1 font-semibold text-blue-600">{companyName}</span>
+              <p className="text-slate-600">Viewing risks for department: </p>
+              <span className="ml-1 font-semibold text-blue-600">{departmentName}</span>
               <button 
                 onClick={() => {
-                  setSelectedCompany(null);
-                  setCompanyName("");
+                  setSelectedDepartment(null);
+                  setDepartmentName("");
                   router.push('/risk-assessment');
                 }}
                 className="ml-2 text-xs text-blue-500 hover:text-blue-700 underline"
@@ -478,7 +501,7 @@ export default function RiskAssessmentPage() {
         </div>
 
         <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 lg:gap-3 items-center justify-between">
-          {(isAdmin || isAssessor) && (
+          {(isSuperAdmin || isAssessor) && (
             <button 
               onClick={() => setShowCreateModal(true)} 
               className="btn-primary text-sm w-full sm:w-auto"
@@ -489,7 +512,7 @@ export default function RiskAssessmentPage() {
           )}
 
           <div className="flex flex-wrap gap-2 lg:gap-3 items-center w-full sm:w-auto">
-            {(isAdmin || isAssessor) && localData.length > 0 && (
+            {(isSuperAdmin || isAssessor) && localData.length > 0 && (
               <div className="flex gap-2 items-center text-xs lg:text-sm">
                 <span className="text-slate-700 font-medium hidden lg:inline">Upload Mode:</span>
                 <div className="flex bg-gray-100 rounded-lg p-1">
@@ -519,7 +542,7 @@ export default function RiskAssessmentPage() {
               </div>
             )}
 
-            {(isAdmin || isAssessor) && (
+            {(isSuperAdmin || isAssessor) && (
               <label className="btn-secondary cursor-pointer text-sm">
                 <input 
                   ref={fileInputRef}
@@ -533,7 +556,7 @@ export default function RiskAssessmentPage() {
               </label>
             )}
 
-            {(isAdmin || isAssessor) ? (
+            {(isSuperAdmin || isAssessor) ? (
               <button onClick={handleDeleteCSV} className="btn-danger text-sm" disabled={localData.length === 0}>
                 <span className="hidden lg:inline">🗑️ Delete CSV</span>
                 <span className="lg:hidden">🗑️ Delete</span>
@@ -544,7 +567,7 @@ export default function RiskAssessmentPage() {
               <span className="hidden lg:inline">Export CSV</span>
               <span className="lg:hidden">Export</span>
             </button>
-            {(isAdmin || isAssessor) && (
+            {(isSuperAdmin || isAssessor) && (
               <button 
                 onClick={() => setShowSaveModal(true)} 
                 className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-3 lg:px-4 rounded text-sm" 
@@ -645,56 +668,56 @@ export default function RiskAssessmentPage() {
                       })}
                       <td className="px-2 py-3 border-r border-gray-100">
                         <div className="flex flex-col gap-1">
-                          {(isAdmin || isAssessor) && (
-                            <>
-                              <button 
-                                className="text-blue-600 hover:text-blue-800 transition-colors p-1 rounded hover:bg-blue-50" 
-                                onClick={() => {
-                                  setEditingRisk(row);
-                                  setShowEditModal(true);
-                                }}
-                                title="Edit Risk"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                              </button>
-                              <button 
-                                className="text-red-600 hover:text-red-800 transition-colors p-1 rounded hover:bg-red-50" 
-                                onClick={() => {
-                                  // Calculate the actual index in the full dataset
-                                  const actualIndex = localData.findIndex(item => item["Sr#"] === row["Sr#"]);
-                                  
-                                  if (actualIndex !== -1) {
-                                    // Remove the item from local data
-                                    let updated = localData.filter((_, i) => i !== actualIndex);
-                                    
-                                    // Recalculate serial numbers for all items to be consecutive
-                                    updated = updated.map((item, idx) => ({
-                                      ...item,
-                                      "Sr#": (idx + 1).toString()
-                                    }));
-                                    
-                                    setLocalData(updated);
-                                    setData(updated);
-                                    
-                                    // If we're on a page that no longer has data, go to previous page
-                                    const newTotalPages = Math.ceil(updated.length / ITEMS_PER_PAGE);
-                                    if (currentPage > newTotalPages && newTotalPages > 0) {
-                                      setCurrentPage(newTotalPages);
-                                    }
-                                  }
-                                  
-                                  // Note: Database changes will be applied when user clicks "Save to Database"
-                                }}
-                                title="Delete Risk"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              </button>
-                            </>
+                          {(isSuperAdmin || isDepartmentHead || isAssessor) && ( // Only super_admin, department_head, and assessor can edit risks
+                            <button 
+                              className="text-blue-600 hover:text-blue-800 transition-colors p-1 rounded hover:bg-blue-50" 
+                              onClick={() => {
+                                setEditingRisk(row);
+                                setShowEditModal(true);
+                              }}
+                              title="Edit Risk"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
                           )}
+                          {(isSuperAdmin || isDepartmentHead) && ( // Only super_admin and department_head can delete risks
+                            <button 
+                              className="text-red-600 hover:text-red-800 transition-colors p-1 rounded hover:bg-red-50" 
+                              onClick={() => {
+                                // Calculate the actual index in the full dataset
+                                const actualIndex = localData.findIndex(item => item["Sr#"] === row["Sr#"]);
+                                
+                                if (actualIndex !== -1) {
+                                  // Remove the item from local data
+                                  let updated = localData.filter((_, i) => i !== actualIndex);
+                                  
+                                  // Recalculate serial numbers for all items to be consecutive
+                                  updated = updated.map((item, idx) => ({
+                                    ...item,
+                                    "Sr#": (idx + 1).toString()
+                                  }));
+                                  
+                                  setLocalData(updated);
+                                  setData(updated);
+                                  
+                                  // If we're on a page that no longer has data, go to previous page
+                                  const newTotalPages = Math.ceil(updated.length / ITEMS_PER_PAGE);
+                                  if (currentPage > newTotalPages && newTotalPages > 0) {
+                                    setCurrentPage(newTotalPages);
+                                  }
+                                }
+                                
+                                // Note: Database changes will be applied when user clicks "Save to Database"
+                              }}
+                              title="Delete Risk"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            )}
                         </div>
                       </td>
                     </tr>
@@ -766,7 +789,7 @@ export default function RiskAssessmentPage() {
           <div className="text-6xl mb-4">📊</div>
           <h3 className="text-xl font-semibold mb-2">No Data Available</h3>
           <p className="text-slate-500">Upload a CSV or Excel file or create your first risk assessment to get started.</p>
-          {(isAdmin || isAssessor) && (
+          {(isSuperAdmin || isAssessor) && (
             <button 
               onClick={() => setShowCreateModal(true)} 
               className="btn-primary mt-4"
@@ -789,14 +812,14 @@ export default function RiskAssessmentPage() {
       {showCreateModal && (
         <RiskFormModal 
           onClose={() => setShowCreateModal(false)} 
-          selectedCompanyId={selectedCompany}
+          selectedDepartmentId={selectedDepartment}
           onSave={(newRisk) => {
             const srNumber = getNextSrNumber();
             const riskWithMetadata = { 
               ...newRisk, 
               ["Sr#"]: srNumber.toString(),
               // Don't add database ID for new risks - let the database generate it
-              ...(selectedCompany && { company_id: selectedCompany })
+              ...(selectedDepartment && { department_id: selectedDepartment })
             };
             
             const updated = [...localData, riskWithMetadata];
@@ -811,7 +834,7 @@ export default function RiskAssessmentPage() {
       {showEditModal && editingRisk && (
         <RiskFormModal 
           initialData={editingRisk} 
-          selectedCompanyId={selectedCompany}
+          selectedDepartmentId={selectedDepartment}
           onClose={() => {
             setEditingRisk(null);
             setShowEditModal(false);
@@ -823,7 +846,7 @@ export default function RiskAssessmentPage() {
               ...updatedRisk,
               ...(riskId && { id: riskId }), // Preserve the database ID
               "Sr#": editingRisk["Sr#"], // Keep the same serial number
-              ...(selectedCompany && { company_id: selectedCompany })
+              ...(selectedDepartment && { department_id: selectedDepartment })
             };
             
             // Find and update the exact row
@@ -866,12 +889,12 @@ export default function RiskAssessmentPage() {
             setSaveSuccess(true);
             
             // Refresh data from database to show updated state
-            if (selectedCompany) {
+            if (selectedDepartment) {
               try {
                 const { data: riskData } = await supabase
                   .from('risks')
                   .select('*')
-                  .eq('company_id', selectedCompany)
+                  .eq('department_id', selectedDepartment)
                   .order('sr_no'); // Ensure consistent ordering by sr_no
 
                 if (riskData && riskData.length > 0) {

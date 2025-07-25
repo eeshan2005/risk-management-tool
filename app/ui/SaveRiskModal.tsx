@@ -11,44 +11,44 @@ interface SaveRiskModalProps {
   onClose: () => void;
   onSuccess: () => void;
   riskData: any[];
-  onSmartSave?: (companyId: string, data: any[]) => Promise<void>;
+  onSmartSave?: (departmentId: string, data: any[]) => Promise<void>;
 }
 
 export default function SaveRiskModal({ onClose, onSuccess, riskData, onSmartSave }: SaveRiskModalProps) {
   const { profile } = useAuth();
-  const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
-  const [selectedCompany, setSelectedCompany] = useState<string>('');
-  const [newCompany, setNewCompany] = useState<string>('');
-  const [isNewCompany, setIsNewCompany] = useState<boolean>(false);
+  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
+  const [selectedDepartment, setSelectedDepartment] = useState<string>('');
+  const [newDepartment, setNewDepartment] = useState<string>('');
+  const [isNewDepartment, setIsNewDepartment] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<boolean>(false);
 
-  // Fetch companies from Supabase
+  // Fetch departments from Supabase
   useEffect(() => {
-    const fetchCompanies = async () => {
+    const fetchDepartments = async () => {
       try {
-        let query = supabase.from('companies').select('id, name').order('name');
+        let query = supabase.from('departments').select('id, name').order('name');
 
-        if (profile?.role === 'assessor' && profile?.company_id) {
-          query = query.eq('id', profile.company_id);
+        if (profile?.role === 'assessor' && profile?.department_id) {
+          query = query.eq('id', profile.department_id);
         }
 
         const { data, error } = await query;
 
         if (error) throw error;
-        setCompanies(data || []);
+        setDepartments(data || []);
         if (data && data.length > 0) {
-          setSelectedCompany(data[0].id);
-        } else if (profile?.role === 'assessor' && !profile?.company_id) {
-          setError('Assessor profile is missing company ID. Cannot save risks.');
+          setSelectedDepartment(data[0].id);
+        } else if (profile?.role === 'assessor' && !profile?.department_id) {
+          setError('Assessor profile is missing department ID. Cannot save risks.');
         }
       } catch (err: any) {
-        setError(`Error fetching companies: ${err.message}`);
+        setError(`Error fetching departments: ${err.message}`);
       }
     };
 
-    fetchCompanies();
+    fetchDepartments();
   }, [profile]);
 
   const handleSave = async () => {
@@ -56,34 +56,34 @@ export default function SaveRiskModal({ onClose, onSuccess, riskData, onSmartSav
     setError(null);
     
     try {
-      let companyId = selectedCompany;
+      let departmentId = selectedDepartment;
 
       if (profile?.role === 'assessor') {
-        if (!profile.company_id) {
-          throw new Error('Assessor profile is missing company ID. Cannot save risks.');
+        if (!profile.department_id) {
+          throw new Error('Assessor profile is missing department ID. Cannot save risks.');
         }
-        companyId = profile.company_id;
+        departmentId = profile.department_id;
       } else {
-        // If creating a new company (only for non-assessors)
-        if (isNewCompany && newCompany.trim()) {
-          const { data: newCompanyData, error: newCompanyError } = await supabase
-            .from('companies')
-            .insert([{ name: newCompany.trim() }])
+        // If creating a new department (only for non-assessors)
+    if (isNewDepartment && newDepartment.trim()) {
+          const { data: newDepartmentData, error: newDepartmentError } = await supabase
+            .from('departments')
+            .insert([{ name: newDepartment.trim() }])
             .select();
 
-          if (newCompanyError) throw newCompanyError;
-          if (newCompanyData && newCompanyData.length > 0) {
-            companyId = newCompanyData[0].id;
+          if (newDepartmentError) throw newDepartmentError;
+          if (newDepartmentData && newDepartmentData.length > 0) {
+            departmentId = newDepartmentData[0].id;
           } else {
-            throw new Error('Failed to create new company');
+            throw new Error('Failed to create new department');
           }
-        } else if (isNewCompany && !newCompany.trim()) {
-          throw new Error('Please enter a company name');
+        } else if (isNewDepartment && !newDepartment.trim()) {
+          throw new Error('Please enter a department name');
         }
       }
 
-      if (!companyId) {
-        throw new Error('Please select a company');
+      if (!departmentId) {
+        throw new Error('Please select a department');
       }
 
       // First, verify that the required column exists in the database
@@ -100,9 +100,9 @@ export default function SaveRiskModal({ onClose, onSuccess, riskData, onSmartSav
       // Sanitize the risk data for Supabase compatibility
       const sanitizedRiskData = sanitizeDataForSupabase(riskData);
 
-      // Add company_id to each record and ensure date fields are properly cleaned
+      // Add department_id to each record and ensure date fields are properly cleaned
       const risksToInsert = sanitizedRiskData.map(risk => {
-        const cleanedRisk = { ...risk, company_id: companyId };
+        const cleanedRisk = { ...risk, department_id: departmentId };
         
         // Additional date cleaning to ensure no invalid date strings reach Supabase
         const dateFields = ['date_risk_identified', 'planned_mitigation_completion_date', 'actual_mitigation_completion_date'];
@@ -122,14 +122,14 @@ export default function SaveRiskModal({ onClose, onSuccess, riskData, onSmartSav
 
       // Use smart save if available, otherwise fall back to complete replacement
       if (onSmartSave) {
-        await onSmartSave(companyId, riskData);
+        await onSmartSave(departmentId, riskData);
       } else {
         // Fallback: Complete replacement
-        // Delete all existing risks for this company first
+        // Delete all existing risks for this department first
         const { error: deleteError } = await supabase
           .from('risks')
           .delete()
-          .eq('company_id', companyId);
+          .eq('department_id', departmentId);
 
         if (deleteError) throw deleteError;
 
@@ -185,7 +185,7 @@ export default function SaveRiskModal({ onClose, onSuccess, riskData, onSmartSav
           <div className="space-y-4">
             {profile?.role === 'assessor' ? (
               <div className="mb-4 p-3 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg">
-                Saving risks for company: <strong>{companies.find(c => c.id === selectedCompany)?.name || 'N/A'}</strong>
+                Saving risks for department: <strong>{departments.find(d => d.id === selectedDepartment)?.name || 'N/A'}</strong>
               </div>
             ) : (
               <>
@@ -193,25 +193,25 @@ export default function SaveRiskModal({ onClose, onSuccess, riskData, onSmartSav
                   <label className="flex items-center gap-2">
                     <input
                       type="radio"
-                      name="companyOption"
-                      checked={!isNewCompany}
-                      onChange={() => setIsNewCompany(false)}
+                      name="departmentOption"
+                      checked={!isNewDepartment}
+                      onChange={() => setIsNewDepartment(false)}
                       className="text-blue-600 focus:ring-blue-500"
                     />
-                    <span className="font-medium">Use existing company</span>
+                    <span className="font-medium">Use existing department</span>
                   </label>
                   
-                  {!isNewCompany && (
+                  {!isNewDepartment && (
                     <div className="mt-2 ml-6">
                       <select
-                        value={selectedCompany}
-                        onChange={(e) => setSelectedCompany(e.target.value)}
+                        value={selectedDepartment}
+                        onChange={(e) => setSelectedDepartment(e.target.value)}
                         className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       >
-                        <option value="">Select a company</option>
-                        {companies.map((company) => (
-                          <option key={company.id} value={company.id}>
-                            {company.name}
+                        <option value="">Select a department</option>
+                        {departments.map((department) => (
+                          <option key={department.id} value={department.id}>
+                            {department.name}
                           </option>
                         ))}
                       </select>
@@ -223,24 +223,24 @@ export default function SaveRiskModal({ onClose, onSuccess, riskData, onSmartSav
                   <label className="flex items-center gap-2">
                     <input
                       type="radio"
-                      name="companyOption"
-                      checked={isNewCompany}
-                      onChange={() => setIsNewCompany(true)}
+                      name="departmentOption"
+                      checked={isNewDepartment}
+                      onChange={() => setIsNewDepartment(true)}
                       className="text-blue-600 focus:ring-blue-500"
                     />
-                    <span className="font-medium">Create new company</span>
+                    <span className="font-medium">Create new department</span>
                   </label>
                   
-                  {isNewCompany && (
+                  {isNewDepartment && (
                     <div className="mt-2 ml-6">
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Company Name
+                        Department Name
                       </label>
                       <input
                         type="text"
-                        value={newCompany}
-                        onChange={(e) => setNewCompany(e.target.value)}
-                        placeholder="Enter company name"
+                        value={newDepartment}
+                        onChange={(e) => setNewDepartment(e.target.value)}
+                        placeholder="Enter department name"
                         className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
@@ -265,7 +265,7 @@ export default function SaveRiskModal({ onClose, onSuccess, riskData, onSmartSav
           </button>
           <button
             onClick={handleSave}
-            disabled={isLoading || (profile?.role !== 'assessor' && (!selectedCompany && !isNewCompany || (isNewCompany && !newCompany.trim())))}
+            disabled={isLoading || (profile?.role !== 'assessor' && (!selectedDepartment && !isNewDepartment || (isNewDepartment && !newDepartment.trim())))}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? 'Saving...' : 'Save'}

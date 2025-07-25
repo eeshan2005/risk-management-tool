@@ -11,8 +11,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const setUser = useAuth((s) => s.setUser);
-  const setProfile = useAuth((s) => s.setProfile);
+  const { initializeAuth } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,24 +26,19 @@ export default function LoginPage() {
       setLoading(false);
       return;
     }
-    setUser(data.user);
-    // Fetch profile
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("role, company_id, email")
-      .eq("id", data.user.id)
-      .single();
-    if (profileError || !profile) {
-      setError("Profile not found");
-      setLoading(false);
-      return;
-    }
-    setProfile(profile);
+
+    await initializeAuth(); // Fetch and set user/profile in store
+
+    // Get the updated profile from the store after initialization
+    const { profile } = useAuth.getState();
+
     setLoading(false);
+
     // Redirect by role
-    if (profile.role === "admin") router.push("/admin");
-    else if (profile.role === "assessor") router.push("/dashboard");
-    else if (profile.role === "reviewer") router.push("/dashboard");
+    if (profile?.role === "super_admin") router.push("/admin");
+    else if (profile?.role === "department_head") router.push("/dashboard");
+    else if (profile?.role === "assessor") router.push("/risk-assessment");
+    else if (profile?.role === "reviewer") router.push("/risk-assessment");
     else router.push("/");
   };
 
@@ -111,10 +105,8 @@ export default function LoginPage() {
             "Login"
           )}
         </button>
-        <div className="text-center text-sm mt-2 text-blue-700">
-          Don&apos;t have an account? <a href="/signup" className="text-blue-600 hover:underline font-semibold">Sign up</a>
-        </div>
+
       </form>
     </div>
   );
-} 
+}

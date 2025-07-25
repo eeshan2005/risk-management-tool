@@ -8,6 +8,8 @@ import { useState, useEffect } from "react";
 import supabase from "@/lib/supabaseClient";
 import { useAuth } from "@/store/useAuth";
 
+import { Users } from "lucide-react";
+
 const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Risk Assessment", href: "/risk-assessment", icon: Shield },
@@ -18,56 +20,56 @@ const navItems = [
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
-  const [isCompaniesOpen, setIsCompaniesOpen] = useState(false);
+  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
+  const [isDepartmentsOpen, setIsDepartmentsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newCompanyName, setNewCompanyName] = useState("");
+  const [newDepartmentName, setNewDepartmentName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [currentCompanyId, setCurrentCompanyId] = useState<string | null>(null);
+  const [currentDepartmentId, setCurrentDepartmentId] = useState<string | null>(null);
   const { profile } = useAuth();
 
-  // Update current company ID whenever URL changes
+  // Update current department ID whenever URL changes
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      const companyId = params.get('company');
-      setCurrentCompanyId(companyId);
+      const departmentId = params.get('department');
+      setCurrentDepartmentId(departmentId);
       
-      // If we're on the risk assessment page and have a company ID, ensure it's selected
-      if (pathname === '/risk-assessment' && companyId && companies.some(c => c.id === companyId)) {
-        setIsCompaniesOpen(true); // Expand the companies section
+      // If we're on the risk assessment page and have a department ID, ensure it's selected
+      if (pathname === '/risk-assessment' && departmentId && departments.some(d => d.id === departmentId)) {
+        setIsDepartmentsOpen(true); // Expand the departments section
       }
     }
-  }, [pathname, typeof window !== 'undefined' ? window.location.search : '', companies]);
+  }, [pathname, typeof window !== 'undefined' ? window.location.search : '', departments]);
   
   useEffect(() => {
-    const fetchCompanies = async () => {
+    const fetchDepartments = async () => {
       try {
         setIsLoading(true);
         const { data, error } = await supabase
-          .from('companies')
+          .from('departments')
           .select('id, name')
           .order('name');
 
         if (error) throw error;
-        setCompanies(data || []);
+        setDepartments(data || []);
       } catch (err: any) {
-        console.error('Error fetching companies:', err);
+        console.error('Error fetching departments:', err);
         setError(err.message);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchCompanies();
+    fetchDepartments();
   }, [pathname]); // Re-fetch when pathname changes to ensure sidebar updates
 
-  const handleCreateCompany = async () => {
-    if (!newCompanyName.trim()) {
-      setCreateError('Please enter a company name');
+  const handleCreateDepartment = async () => {
+    if (!newDepartmentName.trim()) {
+      setCreateError('Please enter a department name');
       return;
     }
 
@@ -76,44 +78,44 @@ export default function Sidebar() {
 
     try {
       const { data, error } = await supabase
-        .from('companies')
-        .insert([{ name: newCompanyName.trim() }])
+        .from('departments')
+        .insert([{ name: newDepartmentName.trim() }])
         .select();
 
       if (error) throw error;
 
       if (data && data.length > 0) {
-        // Refresh companies list
-        const { data: updatedCompanies, error: fetchError } = await supabase
-          .from('companies')
+        // Refresh departments list
+        const { data: updatedDepartments, error: fetchError } = await supabase
+          .from('departments')
           .select('id, name')
           .order('name');
 
         if (fetchError) throw fetchError;
-        setCompanies(updatedCompanies || []);
+        setDepartments(updatedDepartments || []);
 
-        // Navigate to risk assessment page with the new company selected
-        router.push(`/risk-assessment?company=${data[0].id}`);
+        // Navigate to risk assessment page with the new department selected
+        router.push(`/risk-assessment?department=${data[0].id}`);
         
         // Close modal and reset form
         setShowCreateModal(false);
-        setNewCompanyName("");
+        setNewDepartmentName("");
       }
     } catch (err: any) {
-      setCreateError(`Error creating company: ${err.message}`);
+      setCreateError(`Error creating department: ${err.message}`);
     } finally {
       setIsCreating(false);
     }
   };
 
-  const handleCompanySelect = (companyId: string) => {
+  const handleDepartmentSelect = (departmentId: string) => {
     // Update local state immediately
-    setCurrentCompanyId(companyId);
+    setCurrentDepartmentId(departmentId);
     
     // Use router.replace instead of router.push for immediate navigation
     // The replace method updates the URL without adding to history
     // This forces a re-render of the page component
-    router.replace(`/risk-assessment?company=${companyId}`);
+    router.replace(`/risk-assessment?department=${departmentId}`);
   };
 
   const handleLogout = async () => {
@@ -121,10 +123,10 @@ export default function Sidebar() {
     window.location.href = "/login";
   };
 
-  // Only show assigned company for reviewer/assessor
-  const filteredCompanies = profile?.role === 'admin'
-    ? companies
-    : companies.filter(c => c.id === profile?.company_id);
+  // Only show assigned department for reviewer/assessor
+  const filteredDepartments = profile?.role === 'super_admin'
+    ? departments
+    : departments.filter(d => d.id === profile?.department_id);
 
   return (
     <>
@@ -160,8 +162,7 @@ export default function Sidebar() {
             </Link>
           ))}
 
-          {/* Admin-only: Add Assessor */}
-          {profile?.role === "admin" && (
+          {(profile?.role === "super_admin" || profile?.role === "department_head") && (
             <Link
               href="/admin"
               className={`flex items-center gap-4 px-4 py-3 rounded-xl font-medium transition-all duration-200 group ${
@@ -170,66 +171,15 @@ export default function Sidebar() {
                   : "text-slate-300 hover:bg-slate-700/50 hover:text-white"
               }`}
             >
-              <Plus size={20} className={`${pathname === "/admin" ? "text-white" : "text-slate-400 group-hover:text-blue-400"} transition-colors`} />
-              <span className="font-medium">Add Assessor</span>
+              <Users size={20} className={`${pathname === "/admin" ? "text-white" : "text-slate-400 group-hover:text-blue-400"} transition-colors`} />
+              <span className="font-medium">User Management</span>
               {pathname === "/admin" && (
                 <div className="ml-auto w-2 h-2 bg-white rounded-full"></div>
               )}
             </Link>
           )}
 
-          {/* Companies Section */}
-          <div className="mt-6">
-            <button 
-              onClick={() => setIsCompaniesOpen(!isCompaniesOpen)}
-              className="flex items-center gap-4 px-4 py-3 rounded-xl font-medium transition-all duration-200 w-full text-slate-300 hover:bg-slate-700/50 hover:text-white"
-            >
-              <Building2 size={20} className="text-slate-400 group-hover:text-blue-400 transition-colors" />
-              <span className="font-medium">Companies</span>
-              {isCompaniesOpen ? (
-                <ChevronDown size={16} className="ml-auto" />
-              ) : (
-                <ChevronRight size={16} className="ml-auto" />
-              )}
-            </button>
 
-            {isCompaniesOpen && (
-              <div className="ml-6 mt-2 space-y-1">
-                {/* Create New Company Button */}
-                {profile?.role === 'admin' && (
-                  <button
-                    onClick={() => setShowCreateModal(true)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-all duration-200 w-full text-green-400 hover:bg-slate-700/30 hover:text-green-300"
-                  >
-                    <Plus size={16} />
-                    <span>Create New Company</span>
-                  </button>
-                )}
-
-                {isLoading ? (
-                  <div className="text-slate-400 text-sm px-4 py-2">Loading...</div>
-                ) : error ? (
-                  <div className="text-red-400 text-sm px-4 py-2">Error loading companies</div>
-                ) : filteredCompanies.length === 0 ? (
-                  <div className="text-slate-400 text-sm px-4 py-2">No companies found</div>
-                ) : (
-                  filteredCompanies.map((company) => (
-                    <button
-                      key={company.id}
-                      onClick={() => handleCompanySelect(company.id)}
-                      className={`flex items-center px-4 py-2 rounded-lg text-sm transition-all duration-200 w-full text-left ${
-                        currentCompanyId === company.id
-                          ? "bg-blue-600/20 text-blue-300" 
-                          : "text-slate-400 hover:bg-slate-700/30 hover:text-slate-200"
-                      }`}
-                    >
-                      {company.name}
-                    </button>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
         </nav>
 
         {/* Profile and Logout at the bottom */}
@@ -259,14 +209,14 @@ export default function Sidebar() {
         </div>
       </aside>
 
-      {/* Create New Company Modal */}
+      {/* Create New Department Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl border border-gray-200 fade-in">
             <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
-              <h2 className="text-2xl font-bold text-slate-900">Create New Company</h2>
+              <h2 className="text-2xl font-bold text-slate-900">Create New Department</h2>
               <p className="text-slate-600 mt-1">
-                Add a new company to manage risks
+                Add a new department to manage risks
               </p>
             </div>
 
@@ -280,17 +230,17 @@ export default function Sidebar() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Company Name
+                    Department Name
                   </label>
                   <input
                     type="text"
-                    value={newCompanyName}
-                    onChange={(e) => setNewCompanyName(e.target.value)}
-                    placeholder="Enter company name"
+                    value={newDepartmentName}
+                    onChange={(e) => setNewDepartmentName(e.target.value)}
+                    placeholder="Enter department name"
                     className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     onKeyPress={(e) => {
                       if (e.key === 'Enter') {
-                        handleCreateCompany();
+                        handleCreateDepartment();
                       }
                     }}
                   />
@@ -302,7 +252,7 @@ export default function Sidebar() {
               <button
                 onClick={() => {
                   setShowCreateModal(false);
-                  setNewCompanyName("");
+                 setNewDepartmentName("");
                   setCreateError(null);
                 }}
                 disabled={isCreating}
@@ -311,11 +261,11 @@ export default function Sidebar() {
                 Cancel
               </button>
               <button
-                onClick={handleCreateCompany}
-                disabled={isCreating || !newCompanyName.trim()}
+                onClick={handleCreateDepartment}
+                disabled={isCreating || !newDepartmentName.trim()}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isCreating ? 'Creating...' : 'Create Company'}
+                {isCreating ? 'Creating...' : 'Create Department'}
               </button>
             </div>
           </div>

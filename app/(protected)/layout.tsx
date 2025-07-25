@@ -4,18 +4,22 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/store/useAuth";
 
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, initializeAuth } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && (!user || !profile)) {
+    initializeAuth();
+  }, [initializeAuth]);
+
+  useEffect(() => {
+    if (!loading && !user) {
       router.push("/login");
     }
-  }, [user, profile, loading, router]);
+  }, [user, loading, router]);
 
-  if (loading || !user || !profile) {
+  if (loading || !user) {
     return <div className="min-h-screen flex items-center justify-center text-xl">Loading...</div>;
   }
 
   return <>{children}</>;
-} 
+}
