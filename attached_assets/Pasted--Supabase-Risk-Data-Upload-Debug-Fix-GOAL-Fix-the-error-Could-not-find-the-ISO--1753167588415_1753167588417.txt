@@ -1,0 +1,59 @@
+### 🛠️ Supabase Risk Data Upload Debug + Fix ###
+
+GOAL:
+Fix the error: "Could not find the 'ISO 27001: 2022 Controls Reference' column of 'risks' in the schema cache"
+Then, save the risk data (232 records) to Supabase successfully.
+
+ENVIRONMENT:
+- Supabase with `risks` table
+- Frontend is uploading CSV with raw column names
+- Upload option allows choosing a company and saving risk data for that company
+
+TASKS:
+
+1. 🔍 **Schema Validation**
+   - Inspect the `risks` table in Supabase.
+   - Check if the column `'ISO 27001: 2022 Controls Reference'` exists.
+   - If not, normalize and create the column with name:
+     - `iso_27001_2022_controls_reference`
+     - Type: `text`
+
+2. 🧹 **Frontend Column Mapping**
+   - Before sending risk data to Supabase, replace any problematic key names in uploaded CSV like:
+     - `"ISO 27001: 2022 Controls Reference"` → `"iso_27001_2022_controls_reference"`
+   - Do this by preprocessing CSV headers:
+     ```ts
+     const sanitizeColumnName = (name: string) =>
+       name.toLowerCase().replace(/[^a-z0-9]/gi, '_');
+     ```
+     Apply this on all headers before upload.
+
+3. ⚙️ **Create Missing Column in Supabase (if not present)**
+   - Use SQL Editor or Supabase UI to run:
+     ```sql
+     ALTER TABLE risks ADD COLUMN IF NOT EXISTS iso_27001_2022_controls_reference text;
+     ```
+
+4. 🔁 **Refresh Supabase Schema Cache**
+   - If Supabase schema cache is stale, force refresh by:
+     - Navigating to the `Table Editor`, opening the `risks` table.
+     - Clicking "Refresh" or running a dummy query in SQL editor like:
+       ```sql
+       SELECT * FROM risks LIMIT 1;
+       ```
+
+5. ✅ **Attempt to Save Again**
+   - Reupload or trigger save.
+   - The new column mapping should work now, and Supabase should accept the data.
+
+6. 🧪 **Log Output for Debugging**
+   - Print/log the final JSON object being sent to Supabase after column key normalization.
+
+SUCCESS CRITERIA:
+- The risk data uploads successfully without throwing missing column schema errors.
+- You can view all 232 records with the `iso_27001_2022_controls_reference` field in Supabase.
+
+EXTRA:
+If using `supabase-js`, verify table insert like:
+```ts
+await supabase.from("risks").insert(cleanedData);

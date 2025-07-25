@@ -1,0 +1,69 @@
+# 🚨 ERROR 1:
+#   invalid input syntax for type date: "-"
+
+# 🧠 REASON:
+#   - Form fields (especially date fields like 'target_date', 'closure_date') are being filled with "-"
+#   - PostgreSQL does not recognize "-" as a valid date
+
+# ✅ FIX STRATEGY:
+# 1. Detect all form fields before sending to Supabase.
+# 2. For all fields with type `date`:
+#    - If value is "-", "", or undefined → replace with `null`
+#    - Never send invalid strings like "-" to Supabase
+
+# 🛠️ IMPLEMENTATION:
+sanitizeDate = lambda val: None if val in ["-", "", None] else val
+
+# TypeScript Example:
+const cleanDate = (value: string | null | undefined): string | null =>
+  !value || value.trim() === "-" || value.trim() === "" ? null : value;
+
+const sanitizeForm = (form: any) => ({
+  ...form,
+  target_date: cleanDate(form.target_date),
+  due_date: cleanDate(form.due_date),
+  closure_date: cleanDate(form.closure_date),
+});
+
+# ✅ GOAL:
+# - No invalid date values break backend insert
+# - Allow partial form input (only 1–2 fields) without errors
+
+---
+
+# 🚨 ERROR 2:
+#   New data not shown unless manually refreshing the page
+
+# ✅ FIX STRATEGY:
+# - After successful save to Supabase, re-fetch the list of risks for the selected company
+
+# TypeScript Example:
+await supabase.from("risks").insert([cleanedForm]);
+await fetchRisksForCompany(companyId);  // Re-fetch risks dynamically
+
+# Or (React Query):
+await queryClient.invalidateQueries(['risks', companyId]);
+
+# ✅ GOAL:
+# - Risks update live after save
+# - No manual refresh needed
+
+---
+
+# 🔒 SECURITY / CLEAN UI ISSUE:
+# Company ID and internal ID are visible in the frontend form
+
+# ✅ FIX STRATEGY:
+# - Do not render `company_id` or `id` fields in the form
+# - Instead, store `company_id` from the logged-in user context or dropdown selection
+# - Auto-attach `company_id` in backend payload on submission
+
+# TypeScript Example:
+const finalData = {
+  ...cleanedForm,
+  company_id: selectedCompanyId,  // auto-attached before insert
+};
+
+# ✅ GOAL:
+# - Users never see or edit internal IDs
+# - Clean and secure frontend
