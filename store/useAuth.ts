@@ -26,22 +26,34 @@ export const useAuth = create<AuthState>((set) => ({
   reset: () => set({ user: null, profile: null, loading: false }),
   initializeAuth: async () => {
     set({ loading: true });
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user) {
-      const { data: profile, error } = await supabase
-        .from('profiles')
-        .select('role, department_id, email')
-        .eq('id', session.user.id)
-        .single();
-      if (error) {
-        console.error('Error fetching profile:', error);
-        set({ user: null, profile: null, loading: false });
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        try {
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('role, department_id, email')
+            .eq('id', session.user.id)
+            .single();
+          
+          if (error) {
+            console.error('Error fetching profile:', error);
+            // Don't reset user on profile fetch error, just set profile to null
+            // This allows login to continue even if profile fetch fails
+            set({ user: session.user, profile: null, loading: false });
+          } else {
+            set({ user: session.user, profile: profile, loading: false });
+          }
+        } catch (err) {
+          console.error('Exception fetching profile:', err);
+          // Keep the user session but set profile to null
+          set({ user: session.user, profile: null, loading: false });
+        }
       } else {
-
-        set({ user: session.user, profile: profile, loading: false });
+        set({ user: null, profile: null, loading: false });
       }
-    } else {
-
+    } catch (err) {
+      console.error('Error getting session:', err);
       set({ user: null, profile: null, loading: false });
     }
   },

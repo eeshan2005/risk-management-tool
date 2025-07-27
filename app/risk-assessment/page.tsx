@@ -28,8 +28,12 @@ function fuzzyMatch(required: string, actualHeaders: string[]) {
       return actual;
     }
   }
+
+
+
   return null;
 }
+
 
 function isDuplicateRow(rowA: any, rowB: any) {
   const keysA = Object.keys(rowA).filter(k => k !== "Sr#");
@@ -56,6 +60,7 @@ export default function RiskAssessmentPage() {
   const ITEMS_PER_PAGE = 50;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [exportSuccess, setExportSuccess] = useState<string | null>(null);
   const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null);
   const [departmentName, setDepartmentName] = useState<string>("");
   const [originalData, setOriginalData] = useState<Record<string, any>[]>([]);
@@ -142,7 +147,7 @@ export default function RiskAssessmentPage() {
         setHeaders(REQUIRED_HEADERS);
         setOriginalData([]);
       }
-    };
+    }
     if (!loading && profile) fetchRiskData();
     // eslint-disable-next-line
   }, [profile, loading, typeof window !== 'undefined' ? window.location.search : '']);
@@ -184,7 +189,7 @@ export default function RiskAssessmentPage() {
   const getNextSrNumber = () => {
     const srValues = localData.map(item => parseInt(item["Sr#"]) || 0);
     return srValues.length ? Math.max(...srValues) + 1 : 1;
-  };
+  }
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -193,6 +198,11 @@ export default function RiskAssessmentPage() {
     // Only Super Admin and Department Head can upload files
     if (!isSuperAdmin && !isDepartmentHead) {
       setUploadError("You do not have permission to upload files.");
+      
+      // Auto-dismiss error after 5 seconds
+      setTimeout(() => {
+        setUploadError(null);
+      }, 5000);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -205,6 +215,11 @@ export default function RiskAssessmentPage() {
   
     if (!isExcel && !isCSV) {
       setUploadError("Invalid file type. Please upload a CSV or Excel file.");
+      
+      // Auto-dismiss error after 5 seconds
+      setTimeout(() => {
+        setUploadError(null);
+      }, 5000);
       // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -217,19 +232,57 @@ export default function RiskAssessmentPage() {
       const missing = REQUIRED_HEADERS.filter(req => !fuzzyMatch(req, keys));
       if (missing.length > 0) {
         setUploadError(`Cannot upload file. Missing columns: [${missing.map(m => `"${m}"`).join(", ")}]`);
+          
+          // Auto-dismiss error after 5 seconds
+          setTimeout(() => {
+            setUploadError(null);
+          }, 5000);
         return;
       }
   
       setUploadError(null);
-  
-      if (!parsed[0]?.["Sr#"]) {
-        parsed = parsed.map((row, idx) => ({
+      
+      // Process rows based on risk_owner column
+      let processedRows = parsed;
+      
+      // Find the risk_owner column (might be different casing)
+      const riskOwnerKey = keys.find(key => key.toLowerCase() === 'risk owner') || 'Risk Owner';
+      
+      // If not super_admin, validate risk_owner against user's department name
+      if (profile?.role !== 'super_admin' && departmentName) {
+        const nonMatchingRows = parsed.filter(row => {
+          const rowRiskOwner = row[riskOwnerKey];
+          return rowRiskOwner && rowRiskOwner.toLowerCase() !== departmentName.toLowerCase();
+        });
+
+        if (nonMatchingRows.length > 0) {
+          setUploadError("Some risks in the file do not belong to your department and were not added.");
+          setTimeout(() => {
+            setUploadError(null);
+          }, 5000);
+        }
+        processedRows = parsed.filter(row => {
+          const rowRiskOwner = row[riskOwnerKey];
+          return !rowRiskOwner || rowRiskOwner.toLowerCase() === departmentName.toLowerCase();
+        });
+      } else if (profile?.role !== 'super_admin' && !departmentName) {
+        // If not super_admin and no department name, prevent upload
+        setUploadError("Cannot upload file. Your department name is not set, which is required for risk owner assignment.");
+        setTimeout(() => {
+          setUploadError(null);
+        }, 5000);
+        return;
+      }
+      
+      // Continue with processed rows
+      if (!processedRows[0]?.["Sr#"]) {
+        processedRows = processedRows.map((row, idx) => ({
           ...row,
           ["Sr#"]: (uploadMode === "append" ? getNextSrNumber() + idx : idx + 1).toString(),
         }));
       } else if (uploadMode === "append") {
         const offset = getNextSrNumber();
-        parsed = parsed.map((row, idx) => ({
+        processedRows = processedRows.map((row, idx) => ({
           ...row,
           ["Sr#"]: (offset + idx).toString(),
         }));
@@ -240,7 +293,7 @@ export default function RiskAssessmentPage() {
         const newRows: Record<string, any>[] = [];
         const duplicates: Record<string, any>[] = [];
   
-        parsed.forEach(row => {
+        processedRows.forEach(row => {
           const isDuplicate = existingRows.some(existing => isDuplicateRow(existing, row));
           if (isDuplicate) {
             duplicates.push(row);
@@ -248,15 +301,21 @@ export default function RiskAssessmentPage() {
             newRows.push(row);
           }
         });
-  
+
         if (duplicates.length > 0) {
           setDuplicateRows(duplicates);
           setDuplicateInfo({ duplicates: duplicates.length, added: newRows.length });
+
+          // Auto-dismiss duplicate info notification after 5 seconds
+          setTimeout(() => {
+            setDuplicateRows([]);
+            setDuplicateInfo(null);
+          }, 5000);
         } else {
           setDuplicateRows([]);
           setDuplicateInfo(null);
         }
-  
+
         const offset = getNextSrNumber();
         const newRowsWithSr = newRows.map((row, idx) => ({
           ...row,
@@ -269,13 +328,13 @@ export default function RiskAssessmentPage() {
       } else {
         setDuplicateRows([]);
         setDuplicateInfo(null);
-        setHeaders(Object.keys(parsed[0] || {}));
-        setLocalData(parsed);
-        setData(parsed);
+        setHeaders(Object.keys(processedRows[0] || {}));
+        setLocalData(processedRows);
+        setData(processedRows);
       }
-  
+
       setCurrentPage(1);
-    };
+    }
   
     if (isExcel) {
       const reader = new FileReader();
@@ -289,8 +348,13 @@ export default function RiskAssessmentPage() {
           processData(parsed as Record<string, any>[]);
         } catch (error) {
           setUploadError("Error reading Excel file. Please check the file format.");
+        
+        // Auto-dismiss error after 5 seconds
+        setTimeout(() => {
+          setUploadError(null);
+        }, 5000);
         }
-      };
+      }; // Closing brace for the catch block
       reader.readAsArrayBuffer(file);
     } else if (isCSV) {
       Papa.parse(file, {
@@ -301,8 +365,7 @@ export default function RiskAssessmentPage() {
         }
       });
     }
-  };
-
+  }
   const handleDeleteCSV = () => {
     setLocalData([]);
     setData([]);
@@ -320,151 +383,71 @@ export default function RiskAssessmentPage() {
 
   const exportToCSV = () => {
     if (filteredData.length === 0) return;
-    const csv = Papa.unparse(filteredData);
+    
+    // Prepare filename with department name if available
+    let filename = "risk_assessment";
+    if (departmentName) {
+      filename += `_${departmentName.replace(/\s+/g, '_').toLowerCase()}`;
+    }
+    filename += `_${new Date().toISOString().split('T')[0]}.csv`;
+    
+    // Filter out any internal fields before export
+    const exportData = filteredData.map(row => {
+      const filteredRow = {...row};
+      // Remove internal fields
+      ['id', 'Id', 'ID', 'department_id', 'created_at', 'updated_at'].forEach(field => {
+        delete filteredRow[field];
+      });
+      return filteredRow;
+    });
+    
+    const csv = Papa.unparse(exportData);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.setAttribute("download", "risk_assessment.csv");
+    link.setAttribute("download", filename);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    
+    // Show success message
+    setExportSuccess(`CSV exported successfully (${exportData.length} records)`);
+    setTimeout(() => setExportSuccess(null), 3000); // Hide after 3 seconds
+  };
+  
+  // Add Excel export functionality
+  const exportToExcel = () => {
+    if (filteredData.length === 0) return;
+    
+    // Prepare filename with department name if available
+    let filename = "risk_assessment";
+    if (departmentName) {
+      filename += `_${departmentName.replace(/\s+/g, '_').toLowerCase()}`;
+    }
+    filename += `_${new Date().toISOString().split('T')[0]}.xlsx`;
+    
+    // Filter out any internal fields before export
+    const exportData = filteredData.map(row => {
+      const filteredRow = {...row};
+      // Remove internal fields
+      ['id', 'Id', 'ID', 'department_id', 'created_at', 'updated_at'].forEach(field => {
+        delete filteredRow[field];
+      });
+      return filteredRow;
+    });
+    
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Risks");
+    
+    // Generate Excel file and trigger download
+    XLSX.writeFile(workbook, filename);
+    
+    // Show success message
+    setExportSuccess(`Excel exported successfully (${exportData.length} records)`);
+    setTimeout(() => setExportSuccess(null), 3000); // Hide after 3 seconds
   };
 
-  const handleSmartSave = async (selectedDepartmentId: string, currentData = localData) => {
-    if (!selectedDepartmentId) {
-      console.error('Please select a department');
-      return;
-    }
-  
-    try {
-      // Compare current data with original data to find changes
-      const newRisks: any[] = [];
-      const updatedRisks: any[] = [];
-      const deletedRisks: any[] = [];
-  
-      // Find new and updated risks
-      currentData.forEach(currentRisk => {
-        // Check if this risk has a database ID (could be 'id', 'Id', or 'ID')
-        const riskId = currentRisk.id || currentRisk.Id || currentRisk.ID;
-        const originalRisk = originalData.find(orig => {
-          const origId = orig.id || orig.Id || orig.ID;
-          return origId === riskId;
-        });
-        
-        if (!originalRisk || !riskId) {
-          // New risk (no ID or ID not found in original)
-          newRisks.push(currentRisk);
-        } else {
-          // Check if risk was updated (exclude Sr# and id fields from comparison)
-          const isUpdated = Object.keys(currentRisk).some(key => {
-            if (['Sr#', 'sr_no', 'id', 'Id', 'ID', 'department_id', 'created_at'].includes(key)) {
-              return false;
-            }
-            return currentRisk[key] !== originalRisk[key];
-          });
-          if (isUpdated) {
-            updatedRisks.push({ current: currentRisk, original: originalRisk });
-          }
-        }
-      });
-  
-      // Find deleted risks (in original but not in current)
-      originalData.forEach(originalRisk => {
-        const origId = originalRisk.id || originalRisk.Id || originalRisk.ID;
-        const stillExists = currentData.find(curr => {
-          const currId = curr.id || curr.Id || curr.ID;
-          return currId === origId;
-        });
-        if (!stillExists && origId) {
-          deletedRisks.push(originalRisk);
-        }
-      });
-  
-      console.log('Changes detected:', {
-        new: newRisks.length,
-        updated: updatedRisks.length,
-        deleted: deletedRisks.length
-      });
-  
-      // Perform database operations
-      
-      // 1. Delete removed risks
-      for (const risk of deletedRisks) {
-        const riskId = risk.id || risk.Id || risk.ID;
-        if (riskId) {
-          const { error } = await supabase
-            .from('risks')
-            .delete()
-            .eq('id', riskId);
-          if (error) throw error;
-        }
-      }
-  
-      // 2. Insert new risks
-      if (newRisks.length > 0) {
-        const sanitizedNewRisks = sanitizeDataForSupabase(newRisks);
-        const newRisksWithDepartment = sanitizedNewRisks.map(risk => {
-          // Preserve the Sr# value by converting it to sr_no
-          const srNo = risk.sr_no || parseInt(risk.Sr || risk["Sr#"] || "0");
-          return {
-            ...risk,
-            sr_no: srNo,
-            department_id: selectedDepartmentId
-          };
-        });
-  
-        const { error } = await supabase
-          .from('risks')
-          .insert(newRisksWithDepartment);
-        if (error) throw error;
-      }
-  
-      // 3. Update existing risks
-      for (const { current, original } of updatedRisks) {
-        const riskId = original.id || original.Id || original.ID;
-        if (riskId) {
-          const sanitizedRisk = sanitizeDataForSupabase([current])[0];
-          const riskWithDepartment = {
-            ...sanitizedRisk,
-            department_id: selectedDepartmentId
-          };
-  
-          const { error } = await supabase
-            .from('risks')
-            .update(riskWithDepartment)
-            .eq('id', riskId);
-          if (error) throw error;
-        }
-      }
-  
-      // 4. Update serial numbers for all remaining risks
-      const { data: allRisks, error: fetchError } = await supabase
-        .from('risks')
-        .select('*')
-        .eq('department_id', selectedDepartmentId)
-        .order('sr_no'); // Order by sr_no instead of created_at
-  
-      if (fetchError) throw fetchError;
-  
-      // Add this code to update serial numbers sequentially
-      if (allRisks && allRisks.length > 0) {
-        // Update serial numbers to be consecutive
-        for (let i = 0; i < allRisks.length; i++) {
-          const { error: updateError } = await supabase
-            .from('risks')
-            .update({ sr_no: i + 1 })
-            .eq('id', allRisks[i].id);
-          
-          if (updateError) throw updateError;
-        }
-      }
-  
-      console.log('Smart save completed successfully');
-    } catch (err: any) {
-      console.error('Error in smart save:', err);
-      throw err;
-    }
-  };
 
 
   return (
@@ -498,6 +481,45 @@ export default function RiskAssessmentPage() {
       </div>
 
       <div className="p-4 lg:p-6 bg-white rounded-xl shadow-sm border border-gray-200 space-y-4">
+        {/* Success Messages */}
+        {saveSuccess && (
+          <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-2 rounded relative mb-4" role="alert">
+            <span className="block sm:inline">Data cleared successfully!</span>
+          </div>
+        )}
+        
+        {exportSuccess && (
+          <div className="fixed bottom-4 right-4 bg-blue-50 border-l-4 border-blue-500 text-blue-700 p-4 rounded shadow-md z-50 fade-in">
+            <div className="flex items-center">
+              <div className="py-1">
+                <svg className="h-6 w-6 text-blue-500 mr-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <div>
+                <p className="font-bold">Export Successful</p>
+                <p className="text-sm">{exportSuccess}</p>
+              </div>
+              <div className="ml-auto">
+                <button 
+                  className="text-blue-700 hover:text-blue-900" 
+                  onClick={() => setExportSuccess(null)}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {uploadError && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded relative mb-4" role="alert">
+            <span className="block sm:inline">{uploadError}</span>
+          </div>
+        )}
+        
         <div className="w-full">
           <Search value={searchQuery} onChange={setSearchQuery} />
         </div>
@@ -565,10 +587,16 @@ export default function RiskAssessmentPage() {
               </button>
             ) : null}
 
-            <button onClick={exportToCSV} className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-3 lg:px-4 rounded text-sm" disabled={filteredData.length === 0}>
-              <span className="hidden lg:inline">Export CSV</span>
-              <span className="lg:hidden">Export</span>
-            </button>
+            <div className="flex gap-2">
+              <button onClick={exportToCSV} className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-3 lg:px-4 rounded text-sm" disabled={filteredData.length === 0}>
+                <span className="hidden lg:inline">Export CSV</span>
+                <span className="lg:hidden">CSV</span>
+              </button>
+              <button onClick={exportToExcel} className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-3 lg:px-4 rounded text-sm" disabled={filteredData.length === 0}>
+                <span className="hidden lg:inline">Export Excel</span>
+                <span className="lg:hidden">Excel</span>
+              </button>
+            </div>
             {(isSuperAdmin || isDepartmentHead || isAssessor) && (
               <button 
                 onClick={() => setShowSaveModal(true)} 
@@ -684,7 +712,7 @@ export default function RiskAssessmentPage() {
                               </svg>
                             </button>
                           )}
-                          {(isSuperAdmin || isDepartmentHead) && ( // Only super_admin and department_head can delete risks
+                          {(isSuperAdmin || isDepartmentHead || isAssessor) && ( // Only super_admin, department_head, and assessor can delete risks
                             <button 
                               className="text-red-600 hover:text-red-800 transition-colors p-1 rounded hover:bg-red-50" 
                               onClick={() => {
@@ -866,19 +894,56 @@ export default function RiskAssessmentPage() {
       )}
 
       {uploadError && (
-        <div className="fixed inset-0 flex items-center justify-center z-50">
-          <div className="bg-red-50 border border-red-400 text-red-700 px-8 py-6 rounded shadow-lg text-lg font-semibold max-w-xl w-full text-center">
-            {uploadError}
-            <button className="block mx-auto mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700" onClick={() => setUploadError(null)}>Close</button>
+        <div className="fixed bottom-4 right-4 bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-md z-50 fade-in">
+          <div className="flex items-center">
+            <div className="py-1">
+              <svg className="h-6 w-6 text-red-500 mr-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <p className="font-bold">Upload Error</p>
+              <p className="text-sm">{uploadError}</p>
+            </div>
+            <div className="ml-auto">
+              <button 
+                className="text-red-700 hover:text-red-900" 
+                onClick={() => setUploadError(null)}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {duplicateRows.length > 0 && duplicateInfo && (
-        <div className="fixed inset-0 flex items-center justify-center z-50">
-          <div className="bg-yellow-50 border border-yellow-500 text-yellow-800 px-8 py-6 rounded shadow-lg text-lg font-semibold max-w-xl w-full text-center">
-            <p>{duplicateInfo.duplicates} duplicate row(s) were found and skipped during upload.<br/>{duplicateInfo.added} new row(s) were added.</p>
-            <button className="block mx-auto mt-4 px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600" onClick={() => { setDuplicateRows([]); setDuplicateInfo(null); }}>Close</button>
+        <div className="fixed bottom-4 right-4 bg-yellow-50 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded shadow-md z-50 fade-in">
+          <div className="flex items-center">
+            <div className="py-1">
+              <svg className="h-6 w-6 text-yellow-500 mr-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <div>
+              <p className="font-bold">Duplicate Entries Found</p>
+              <p className="text-sm">
+                <span className="font-semibold text-yellow-700">{duplicateInfo.duplicates}</span> duplicate row(s) were skipped.
+                <span className="font-semibold text-green-700 ml-1">{duplicateInfo.added}</span> new row(s) were added.
+              </p>
+            </div>
+            <div className="ml-auto">
+              <button 
+                className="text-yellow-700 hover:text-yellow-900" 
+                onClick={() => { setDuplicateRows([]); setDuplicateInfo(null); }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -916,12 +981,12 @@ export default function RiskAssessmentPage() {
             }, 3000);
           }}
           riskData={localData}
-          onSmartSave={handleSmartSave}
+
         />
       )}
 
       {saveSuccess && (
-        <div className="fixed bottom-4 right-4 bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded shadow-md z-50 fade-in">
+        <div className="fixed bottom-4 right-4 bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded shadow-md z-50 fade-in">
           <div className="flex items-center">
             <div className="py-1">
               <svg className="h-6 w-6 text-green-500 mr-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -931,6 +996,16 @@ export default function RiskAssessmentPage() {
             <div>
               <p className="font-bold">Success!</p>
               <p className="text-sm">Risk data saved to database successfully.</p>
+            </div>
+            <div className="ml-auto">
+              <button 
+                className="text-green-700 hover:text-green-900" 
+                onClick={() => setSaveSuccess(false)}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
             </div>
           </div>
         </div>

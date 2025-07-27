@@ -49,16 +49,26 @@ export default function Sidebar() {
     const fetchDepartments = async () => {
       try {
         setIsLoading(true);
+        setError(null); // Reset error state before fetching
+        
         const { data, error } = await supabase
           .from('departments')
           .select('id, name')
           .order('name');
 
-        if (error) throw error;
-        setDepartments(data || []);
+        if (error) {
+          console.error('Error fetching departments:', error);
+          setError(error.message);
+          // Set empty departments array instead of throwing
+          setDepartments([]);
+        } else {
+          setDepartments(data || []);
+        }
       } catch (err: any) {
-        console.error('Error fetching departments:', err);
-        setError(err.message);
+        console.error('Exception fetching departments:', err);
+        setError(err.message || 'An error occurred while fetching departments');
+        // Set empty departments array on exception
+        setDepartments([]);
       } finally {
         setIsLoading(false);
       }
@@ -163,20 +173,37 @@ export default function Sidebar() {
           ))}
 
           {(profile?.role === "super_admin" || profile?.role === "department_head") && (
-            <Link
-              href="/admin"
-              className={`flex items-center gap-4 px-4 py-3 rounded-xl font-medium transition-all duration-200 group ${
-                pathname === "/admin"
-                  ? "bg-blue-600 text-white shadow-lg"
-                  : "text-slate-300 hover:bg-slate-700/50 hover:text-white"
-              }`}
-            >
-              <Users size={20} className={`${pathname === "/admin" ? "text-white" : "text-slate-400 group-hover:text-blue-400"} transition-colors`} />
-              <span className="font-medium">User Management</span>
-              {pathname === "/admin" && (
-                <div className="ml-auto w-2 h-2 bg-white rounded-full"></div>
-              )}
-            </Link>
+            <>
+              <Link
+                href="/admin"
+                className={`flex items-center gap-4 px-4 py-3 rounded-xl font-medium transition-all duration-200 group ${
+                  pathname === "/admin"
+                    ? "bg-blue-600 text-white shadow-lg"
+                    : "text-slate-300 hover:bg-slate-700/50 hover:text-white"
+                }`}
+              >
+                <Building2 size={20} className={`${pathname === "/admin" ? "text-white" : "text-slate-400 group-hover:text-blue-400"} transition-colors`} />
+                <span className="font-medium">Admin Dashboard</span>
+                {pathname === "/admin" && (
+                  <div className="ml-auto w-2 h-2 bg-white rounded-full"></div>
+                )}
+              </Link>
+              
+              <Link
+                href="/admin/users"
+                className={`flex items-center gap-4 px-4 py-3 rounded-xl font-medium transition-all duration-200 group ${
+                  pathname === "/admin/users"
+                    ? "bg-blue-600 text-white shadow-lg"
+                    : "text-slate-300 hover:bg-slate-700/50 hover:text-white"
+                }`}
+              >
+                <Users size={20} className={`${pathname === "/admin/users" ? "text-white" : "text-slate-400 group-hover:text-blue-400"} transition-colors`} />
+                <span className="font-medium">User Management</span>
+                {pathname === "/admin/users" && (
+                  <div className="ml-auto w-2 h-2 bg-white rounded-full"></div>
+                )}
+              </Link>
+            </>
           )}
 
 
@@ -192,7 +219,12 @@ export default function Sidebar() {
                 </div>
                 <div className="flex flex-col items-start">
                   <div className="font-semibold text-white text-sm">{profile.email}</div>
-                  <div className="bg-blue-700 text-white px-2 py-0.5 rounded-full text-xs capitalize mt-1 shadow">{profile.role}</div>
+                  <div className="flex items-center gap-1 mt-1">
+                    <div className="bg-blue-700 text-white px-2 py-0.5 rounded-full text-xs capitalize shadow">{profile.role}</div>
+                    {profile.role !== 'super_admin' && profile.department_id && (
+                      <span className="text-slate-400 text-xs">({departments.find(d => d.id === profile.department_id)?.name || 'N/A'})</span>
+                    )}
+                  </div>
                 </div>
               </div>
               <button

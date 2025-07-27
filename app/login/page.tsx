@@ -27,19 +27,37 @@ export default function LoginPage() {
       return;
     }
 
-    await initializeAuth(); // Fetch and set user/profile in store
+    try {
+      await initializeAuth(); // Fetch and set user/profile in store
 
-    // Get the updated profile from the store after initialization
-    const { profile } = useAuth.getState();
+      // Get the updated profile from the store after initialization
+      const { profile, user } = useAuth.getState();
 
-    setLoading(false);
+      setLoading(false);
 
-    // Redirect by role
-    if (profile?.role === "super_admin") router.push("/admin");
-    else if (profile?.role === "department_head") router.push("/dashboard");
-    else if (profile?.role === "assessor") router.push("/risk-assessment");
-    else if (profile?.role === "reviewer") router.push("/risk-assessment");
-    else router.push("/");
+      if (!user) {
+        setError("Authentication failed. Please try again.");
+        return;
+      }
+
+      // Handle case where user is authenticated but profile might be null
+      if (!profile) {
+        console.log("User authenticated but no profile found. Redirecting to default page.");
+        router.push("/");
+        return;
+      }
+
+      // Redirect by role
+      if (profile.role === "super_admin") router.push("/admin");
+      else if (profile.role === "department_head") router.push("/dashboard");
+      else if (profile.role === "assessor") router.push("/risk-assessment");
+      else if (profile.role === "reviewer") router.push("/risk-assessment");
+      else router.push("/");
+    } catch (err) {
+      console.error("Error during login process:", err);
+      setError("An error occurred during login. Please try again.");
+      setLoading(false);
+    }
   };
 
   return (

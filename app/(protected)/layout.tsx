@@ -12,13 +12,25 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   }, [initializeAuth]);
 
   useEffect(() => {
-    if (!loading && !user) {
-      router.push("/login");
+    if (!loading) {
+      if (!user) {
+        // No authenticated user, redirect to login
+        router.push("/login");
+      } else if (!profile) {
+        // User is authenticated but no profile found
+        console.warn("User authenticated but no profile found in protected layout");
+        // You can decide to either redirect to a specific page or allow access
+        // For now, we'll allow access but log the warning
+      }
     }
-  }, [user, loading, router]);
+  }, [user, profile, loading, router]);
 
-  if (loading || !user) {
+  if (loading) {
     return <div className="min-h-screen flex items-center justify-center text-xl">Loading...</div>;
+  }
+  
+  if (!user) {
+    return <div className="min-h-screen flex items-center justify-center text-xl">Redirecting to login...</div>;
   }
 
   return <>{children}</>;
