@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-
 import supabase from '@/lib/supabaseClient';
 
 interface AuthState {
@@ -38,9 +37,11 @@ export const useAuth = create<AuthState>((set) => ({
         console.error('Error fetching profile:', error);
         set({ user: null, profile: null, loading: false });
       } else {
+
         set({ user: session.user, profile: profile, loading: false });
       }
     } else {
+
       set({ user: null, profile: null, loading: false });
     }
   },

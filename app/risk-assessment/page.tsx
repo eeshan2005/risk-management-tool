@@ -74,6 +74,8 @@ export default function RiskAssessmentPage() {
       if (!profile) return;
 
       let currentDepartmentId = null;
+      console.log('Profile:', profile);
+      console.log('Profile Department ID:', profile.department_id);
       let currentDepartmentName = "";
 
       if (profile.role === "super_admin") {
@@ -501,7 +503,7 @@ export default function RiskAssessmentPage() {
         </div>
 
         <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 lg:gap-3 items-center justify-between">
-          {(isSuperAdmin || isAssessor) && (
+          {(isSuperAdmin || isDepartmentHead || isAssessor) && (
             <button 
               onClick={() => setShowCreateModal(true)} 
               className="btn-primary text-sm w-full sm:w-auto"
@@ -512,7 +514,7 @@ export default function RiskAssessmentPage() {
           )}
 
           <div className="flex flex-wrap gap-2 lg:gap-3 items-center w-full sm:w-auto">
-            {(isSuperAdmin || isAssessor) && localData.length > 0 && (
+            {(isSuperAdmin || isDepartmentHead || isAssessor) && localData.length > 0 && (
               <div className="flex gap-2 items-center text-xs lg:text-sm">
                 <span className="text-slate-700 font-medium hidden lg:inline">Upload Mode:</span>
                 <div className="flex bg-gray-100 rounded-lg p-1">
@@ -542,7 +544,7 @@ export default function RiskAssessmentPage() {
               </div>
             )}
 
-            {(isSuperAdmin || isAssessor) && (
+            {(isSuperAdmin || isDepartmentHead || isAssessor) && (
               <label className="btn-secondary cursor-pointer text-sm">
                 <input 
                   ref={fileInputRef}
@@ -556,7 +558,7 @@ export default function RiskAssessmentPage() {
               </label>
             )}
 
-            {(isSuperAdmin || isAssessor) ? (
+            {(isSuperAdmin || isDepartmentHead || isAssessor) ? (
               <button onClick={handleDeleteCSV} className="btn-danger text-sm" disabled={localData.length === 0}>
                 <span className="hidden lg:inline">🗑️ Delete CSV</span>
                 <span className="lg:hidden">🗑️ Delete</span>
@@ -567,7 +569,7 @@ export default function RiskAssessmentPage() {
               <span className="hidden lg:inline">Export CSV</span>
               <span className="lg:hidden">Export</span>
             </button>
-            {(isSuperAdmin || isAssessor) && (
+            {(isSuperAdmin || isDepartmentHead || isAssessor) && (
               <button 
                 onClick={() => setShowSaveModal(true)} 
                 className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-3 lg:px-4 rounded text-sm" 
@@ -789,7 +791,7 @@ export default function RiskAssessmentPage() {
           <div className="text-6xl mb-4">📊</div>
           <h3 className="text-xl font-semibold mb-2">No Data Available</h3>
           <p className="text-slate-500">Upload a CSV or Excel file or create your first risk assessment to get started.</p>
-          {(isSuperAdmin || isAssessor) && (
+          {(isSuperAdmin || isDepartmentHead || isAssessor) && (
             <button 
               onClick={() => setShowCreateModal(true)} 
               className="btn-primary mt-4"

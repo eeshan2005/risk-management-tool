@@ -5,7 +5,7 @@ import { useAuth } from "@/store/useAuth";
 import { useRouter } from "next/navigation";
 
 export default function AdminPage() {
-  const { profile } = useAuth();
+  const { profile, loading: authLoading, initializeAuth } = useAuth();
   const router = useRouter();
   const [users, setUsers] = useState<any[]>([]);
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
@@ -22,12 +22,19 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    initializeAuth();
+  }, [initializeAuth]);
+
+  useEffect(() => {
+    if (authLoading) {
+      return;
+    }
     if (!profile || (profile.role !== "super_admin" && profile.role !== "department_head")) {
       router.push("/login");
       return;
     }
     fetchDepartments();
-  }, [profile]);
+  }, [profile, authLoading, router]);
 
   useEffect(() => {
     if (selectedDepartment) {
@@ -64,7 +71,9 @@ export default function AdminPage() {
     try {
       const { data, error } = await supabase
         .from("profiles")
-        .select("*, auth.users(email)")
+        .select('*')
+
+
         .eq("department_id", departmentId);
       if (error) throw error;
       setUsers(data || []);
@@ -104,15 +113,22 @@ export default function AdminPage() {
       if (signUpError || !data.user) {
         throw new Error(signUpError?.message || "Signup failed");
       }
-      const { error: profileError } = await supabase.from("profiles").insert({
+      // Introduce a small delay to ensure user is fully committed in auth.users
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      console.log("Current authenticated user ID before profile upsert:", currentSession?.user?.id);
+
+      const { error: profileError } = await supabase.from("profiles").upsert({
         id: data.user.id,
         email: newUserData.email,
-        role: newUserData.role,
-        department_id: newUserData.department_id,
-      });
+        role: newUserData.role || 'reviewer',
+        department_id: selectedDepartment,
+      }, { onConflict: 'id' });
       if (profileError) {
         throw new Error(profileError.message);
       }
+
       setNewUserData({ email: "", password: "", role: "assessor", department_id: "" });
       setShowAddUserModal(false);
       if (selectedDepartment) fetchUsers(selectedDepartment);
@@ -221,14 +237,14 @@ export default function AdminPage() {
             {profile?.role === "super_admin" && (
               <button className="btn-primary" onClick={() => {
                 setShowAddUserModal(true);
-                setNewUserData(prev => ({ ...prev, department_id: selectedDepartment }));
+                setNewUserData(prev => ({ ...prev, department_id: selectedDepartment, role: "department_head" }));
               }}>
                 Add Department Head
               </button>
             )}
             <button className="btn-primary" onClick={() => {
               setShowAddUserModal(true);
-              setNewUserData(prev => ({ ...prev, department_id: selectedDepartment }));
+              setNewUserData(prev => ({ ...prev, department_id: selectedDepartment, role: "assessor" }));
             }}>
               Add User (Assessor/Reviewer)
             </button>
@@ -328,7 +344,7 @@ export default function AdminPage() {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl border border-gray-200 fade-in">
             <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
-              <h2 className="text-2xl font-bold text-slate-900">Edit User: {editUserData.email}</h2>
+              <h2 className="text-2xl font-bold text-slate-900">Edit User: {editUserData.email || 'N/A'}</h2>
             </div>
             <form onSubmit={handleEditUser} className="p-6 space-y-4">
               <div>
