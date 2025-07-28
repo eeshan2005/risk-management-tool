@@ -30,13 +30,7 @@ export default function Home() {
             <span>Login</span>
             <span className="text-xl group-hover:translate-x-1 transition-transform">🔐</span>
           </a>
-          <a
-            href="/signup"
-            className="inline-flex items-center gap-3 bg-white/10 hover:bg-white/20 text-white px-8 py-4 rounded-xl text-lg font-semibold transition-all duration-300 backdrop-blur-sm border border-white/20 hover:border-white/30"
-          >
-            <span>Sign Up</span>
-            <span className="text-xl">📝</span>
-          </a>
+
 
         </div>
         

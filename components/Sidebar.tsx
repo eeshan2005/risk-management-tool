@@ -129,8 +129,19 @@ export default function Sidebar() {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    window.location.href = "/login";
+    try {
+          console.log('Calling supabase.auth.signOut()');
+          // Clear local storage items related to Supabase session
+          localStorage.removeItem('risk-management-auth-code-verifier');
+          localStorage.removeItem('risk-management-auth-pkce-code-verifier');
+          localStorage.removeItem('risk-management-auth');
+          await supabase.auth.signOut();
+    } catch (error) {
+      console.error('Error during logout:', error);
+    } finally {
+      console.log('Attempting to redirect to login...');
+      router.push("/login");
+    }
   };
 
   // Only show assigned department for reviewer/assessor

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+
 import supabase from "@/lib/supabaseClient";
 import { useAuth } from "@/store/useAuth";
 import { useRouter } from "next/navigation";
@@ -179,6 +180,8 @@ export default function UserManagementPage() {
       }
       // Introduce a small delay to ensure user is fully committed in auth.users
       await new Promise(resolve => setTimeout(resolve, 500));
+
+
 
       const { error: profileError } = await supabase.from("profiles").upsert({
         id: data.user.id,
@@ -360,20 +363,17 @@ export default function UserManagementPage() {
           <h2 className="text-2xl font-bold mb-4">{departments.find(d => d.id === selectedDepartment)?.name} Users</h2>
           
           <div className="mb-4 flex gap-2">
-            {profile?.role === "super_admin" && (
-              <button className="btn-primary" onClick={() => {
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => {
+                setNewUserData({ ...newUserData, role: "assessor", department_id: selectedDepartment || "" });
                 setShowAddUserModal(true);
-                setNewUserData(prev => ({ ...prev, department_id: selectedDepartment, role: "department_head" }));
-              }}>
-                Add Department Head
-              </button>
-            )}
-            <button className="btn-primary" onClick={() => {
-              setShowAddUserModal(true);
-              setNewUserData(prev => ({ ...prev, department_id: selectedDepartment, role: "assessor" }));
-            }}>
-              Add User (Assessor/Reviewer)
+              }}
+              className="bg-blue-500 text-white px-4 py-2 rounded"
+            >
+              Add User
             </button>
+          </div>
           </div>
 
           {loading && <p>Loading users...</p>}

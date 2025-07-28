@@ -30,7 +30,7 @@ export default function SaveRiskModal({ onClose, onSuccess, riskData, onSmartSav
       try {
         let query = supabase.from('departments').select('id, name').order('name');
 
-        if (profile?.role === 'assessor' && profile?.department_id) {
+        if ((profile?.role === 'assessor' || profile?.role === 'department_head') && profile?.department_id) {
           query = query.eq('id', profile.department_id);
         }
 
@@ -183,7 +183,7 @@ export default function SaveRiskModal({ onClose, onSuccess, riskData, onSmartSav
           )}
 
           <div className="space-y-4">
-            {profile?.role === 'assessor' ? (
+            {(profile?.role === 'assessor' || profile?.role === 'department_head') ? (
               <div className="mb-4 p-3 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg">
                 Saving risks for department: <strong>{departments.find(d => d.id === selectedDepartment)?.name || 'N/A'}</strong>
               </div>
